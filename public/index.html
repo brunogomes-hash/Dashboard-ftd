@@ -19,7 +19,7 @@
     .tab-content { display: none; }
     .tab-content.active { display: block; }
 
-    /* Cabeçalhos */
+    /* ESTILOS DA ABA ESTOQUE */
     .header { display: flex; justify-content: space-between; align-items: center; background: #000000; border-radius: 8px; margin-bottom: 12px; border: 1px solid #222; padding: 12px 18px; }
     .header-title { font-size: 22px; font-weight: 800; letter-spacing: 2px; color: #ffffff; text-transform: uppercase; }
 
@@ -53,11 +53,40 @@
 
     .chart-container { position: relative; height: 210px; width: 100%; }
 
-    /* Estilos Outbound */
-    .outbound-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 12px; }
-    .outbound-card { background: #121212; border: 1px solid #2a2a2a; border-radius: 8px; padding: 20px; text-align: center; }
-    .outbound-card span { font-size: 12px; color: #888; text-transform: uppercase; display: block; margin-bottom: 8px; }
-    .outbound-card strong { font-size: 28px; color: #45a29e; }
+    /* ESTILOS DA ABA OUTBOUND - IGUAL DA SEGUNDA IMAGEM */
+    .outbound-header { display: flex; align-items: center; justify-content: space-between; background: #000; padding: 6px 12px; border-radius: 6px; margin-bottom: 8px; border: 1px solid #222; }
+    .logos-box { display: flex; align-items: center; gap: 10px; }
+    .logo-badge { background: #1a2a3a; color: #fff; font-weight: 900; padding: 6px 12px; border-radius: 4px; font-size: 16px; font-style: italic; }
+    .logo-sub { background: #fff; color: #000; font-weight: bold; padding: 4px 8px; border-radius: 4px; font-size: 12px; }
+    
+    .sla-box { border: 1px solid #fff; padding: 4px 12px; border-radius: 4px; text-align: center; }
+    .sla-box span { font-size: 9px; display: block; }
+    .sla-box strong { font-size: 16px; color: #fff; }
+
+    .main-title-outbound { font-size: 24px; font-weight: 900; letter-spacing: 2px; }
+    .date-filter-box { background: #1c1c1c; border: 1px solid #333; padding: 6px 12px; border-radius: 4px; font-size: 11px; color: #aaa; }
+
+    /* KPI Cards Topo Outbound */
+    .top-kpis-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-bottom: 8px; }
+    .kpi-card-outbound { background: #181818; border: 1px solid #2a2a2a; border-radius: 6px; padding: 10px; height: 75px; display: flex; flex-direction: column; justify-content: space-between; }
+    .kpi-card-outbound .title { font-size: 12px; font-weight: bold; color: #e0e0e0; }
+    .kpi-card-outbound .sub { font-size: 10px; color: #888; }
+
+    /* Layout do Corpo Outbound */
+    .outbound-body-grid { display: grid; grid-template-columns: 140px 1fr 300px; gap: 8px; }
+
+    .left-side-kpis { display: flex; flex-direction: column; gap: 8px; }
+    .kpi-sq-card { background: #181818; border: 1px solid #2a2a2a; border-radius: 6px; padding: 12px; text-align: center; height: 95px; display: flex; flex-direction: column; justify-content: center; }
+    .kpi-sq-card span { font-size: 11px; font-weight: bold; color: #e0e0e0; margin-bottom: 6px; }
+    .kpi-sq-card strong { font-size: 20px; color: #fff; }
+
+    .center-charts { display: flex; flex-direction: column; gap: 8px; }
+    .chart-panel { background: #181818; border: 1px solid #2a2a2a; border-radius: 6px; padding: 8px; height: 180px; position: relative; }
+    .chart-panel-tag { position: absolute; top: 8px; left: 8px; background: #eaeaea; color: #000; font-size: 10px; font-weight: bold; padding: 2px 8px; border-radius: 10px; z-index: 2; }
+
+    .right-chart { background: #181818; border: 1px solid #2a2a2a; border-radius: 6px; padding: 8px; position: relative; height: 556px; }
+
+    .empty-chart-icon { display: flex; align-items: center; justify-content: center; height: 100%; color: #444; font-size: 32px; }
   </style>
 </head>
 <body>
@@ -166,29 +195,91 @@
     </div>
   </div>
 
-  <!-- ABA 2: OUTBOUND - GERAL -->
+  <!-- ABA 2: OUTBOUND GERAL (LAYOUT COMPLETO DA SEGUNDA IMAGEM) -->
   <div id="tab-outbound" class="tab-content">
-    <div class="header">
-      <span class="header-title">OUTBOUND - GERAL</span>
-      <div class="update-time">Última Atualização: <span id="outbound-atualizacao">-</span></div>
+    <div class="outbound-header">
+      <div class="logos-box">
+        <div class="logo-badge">LUFT LOGISTICS</div>
+        <div class="logo-sub">FTD educação</div>
+        <div class="sla-box">
+          <span>% SLA</span>
+          <strong id="out-sla">100,00%</strong>
+        </div>
+      </div>
+
+      <div class="main-title-outbound">OUTBOUND GERAL</div>
+
+      <div class="date-filter-box">
+        <span id="out-data-filtro">1 de out. de 2026 - 31 de out. de 2026</span> ▼
+      </div>
     </div>
 
-    <div class="outbound-grid">
-      <div class="outbound-card">
-        <span>Total SKUs</span>
-        <strong id="outbound-skus">-</strong>
+    <!-- Cards KPI Superiores -->
+    <div class="top-kpis-grid">
+      <div class="kpi-card-outbound">
+        <div class="title">Forecast Peças</div>
+        <div class="sub">Pedidos: <strong style="color:#fff" id="fcst-ped">-</strong></div>
       </div>
-      <div class="outbound-card">
-        <span>Quantidade Total</span>
-        <strong id="outbound-qtd">-</strong>
+      <div class="kpi-card-outbound">
+        <div class="title">Peças Integradas</div>
+        <div class="sub">Pedidos: <strong style="color:#fff" id="integ-ped">-</strong></div>
       </div>
-      <div class="outbound-card">
-        <span>Total Pedidos</span>
-        <strong id="outbound-pedidos">-</strong>
+      <div class="kpi-card-outbound">
+        <div class="title">Peças Fluxo</div>
+        <div class="sub">Pedidos: <strong style="color:#fff" id="fluxo-ped">-</strong></div>
       </div>
-      <div class="outbound-card">
-        <span>Total Notas Fiscais</span>
-        <strong id="outbound-notas">-</strong>
+      <div class="kpi-card-outbound">
+        <div class="title">Em Coleta</div>
+        <div class="sub">Pedidos: <strong style="color:#fff" id="coleta-ped">-</strong></div>
+      </div>
+      <div class="kpi-card-outbound">
+        <div class="title">Em Tratativa</div>
+        <div class="sub">Pedidos: <strong style="color:#fff" id="trat-ped">-</strong></div>
+      </div>
+      <div class="kpi-card-outbound">
+        <div class="title">Peças Produzidas</div>
+        <div class="sub">Pedidos: <strong style="color:#fff" id="prod-ped">-</strong></div>
+      </div>
+      <div class="kpi-card-outbound">
+        <div class="title">Peças Expedidas</div>
+        <div class="sub">Pedidos: <strong style="color:#fff" id="exp-ped">-</strong></div>
+      </div>
+    </div>
+
+    <!-- Grid do Corpo -->
+    <div class="outbound-body-grid">
+      <!-- Esquerda (KPIs % Vs FCST) -->
+      <div class="left-side-kpis">
+        <div class="kpi-sq-card">
+          <span>Intregado x Fcst</span>
+          <strong id="integ-vs-fcst">0,00%</strong>
+        </div>
+        <div class="kpi-sq-card">
+          <span>Produzido x Fcst</span>
+          <strong id="prod-vs-fcst">1,14%</strong>
+        </div>
+      </div>
+
+      <!-- Centro (Painéis de Gráficos) -->
+      <div class="center-charts">
+        <div class="chart-panel">
+          <span class="chart-panel-tag">Peças Integradas por Data</span>
+          <div class="empty-chart-icon">📈</div>
+        </div>
+        <div class="chart-panel">
+          <span class="chart-panel-tag">Peças e Pedidos Faturados por Data</span>
+          <div class="empty-chart-icon">📊</div>
+        </div>
+        <div class="chart-panel">
+          <span class="chart-panel-tag">Peças Expedidas por Data</span>
+          <div class="empty-chart-icon">📉</div>
+        </div>
+      </div>
+
+      <!-- Direita (Gráfico Lateral) -->
+      <div class="right-chart">
+        <span class="chart-panel-tag">Peças por Data e Status</span>
+        <div class="empty-chart-icon">📊</div>
       </div>
     </div>
   </div>
@@ -310,11 +401,10 @@
         const data = await res.json();
         if (!data || data.error) return;
 
-        document.getElementById('outbound-skus').innerText = fmt(data.total_skus);
-        document.getElementById('outbound-qtd').innerText = fmt(data.total_quantidade);
-        document.getElementById('outbound-pedidos').innerText = fmt(data.total_pedidos);
-        document.getElementById('outbound-notas').innerText = fmt(data.total_notas);
-        document.getElementById('outbound-atualizacao').innerText = data.ultima_atualizacao || '-';
+        document.getElementById('integ-ped').innerText = fmt(data.pedidos_integradas);
+        document.getElementById('trat-ped').innerText = fmt(data.pedidos_tratativa);
+        document.getElementById('prod-ped').innerText = fmt(data.pedidos_produzidas);
+        document.getElementById('exp-ped').innerText = fmt(data.pedidos_expedidas);
       } catch (err) {
         console.error('Erro ao carregar outbound:', err);
       }
