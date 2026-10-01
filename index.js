@@ -6,7 +6,6 @@ require('dotenv').config();
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Servir os arquivos estáticos da pasta public
 app.use(express.static(path.join(__dirname, 'public')));
 
 const pool = new Pool({
@@ -14,43 +13,47 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
-// Endpoint que calcula os indicadores
 app.get('/api/dashboard', async (req, res) => {
   try {
     // 1. Totais Gerais
     const gerais = await pool.query(`
       SELECT 
-        COALESCE(SUM(quantidade), 0) AS total_estoque,
-        COUNT(DISTINCT sku) AS total_skus,
-        COUNT(DISTINCT id_posicao) AS total_posicoes,
-        COUNT(DISTINCT CASE WHEN quantidade > 0 THEN id_posicao END) AS posicoes_ocupadas,
-        COUNT(DISTINCT CASE WHEN quantidade = 0 OR quantidade IS NULL THEN id_posicao END) AS posicoes_vazias
-      FROM estoque
-      WHERE status = 'ATIVO' AND estado = 'NORMAL'
+        COALESCE(SUM("disponível"), 0) AS total_estoque,
+        COUNT(DISTINCT "código_do_produto") AS total_skus,
+        COUNT(DISTINCT "id_local") AS total_posicoes,
+        COUNT(DISTINCT CASE WHEN "disponível" > 0 THEN "id_local" END) AS posicoes_ocupadas,
+        COUNT(DISTINCT CASE WHEN "disponível" = 0 OR "disponível" IS NULL THEN "id_local" END) AS posicoes_vazias
+      FROM "estoque"
+      WHERE ("local_ativo" ILIKE 'S' OR "local_ativo" ILIKE 'ATIVO' OR "local_ativo" = '1')
+        AND ("estado" ILIKE 'NORMAL' OR "estado" IS NULL)
     `);
 
     // 2. Ocupação Picking
     const picking = await pool.query(`
       SELECT 
-        COALESCE(SUM(quantidade), 0) AS total_pecas,
-        COUNT(DISTINCT sku) AS total_skus,
-        COUNT(DISTINCT id_posicao) AS capacidade,
-        COUNT(DISTINCT CASE WHEN quantidade > 0 THEN id_posicao END) AS ocupadas,
-        COUNT(DISTINCT CASE WHEN quantidade = 0 OR quantidade IS NULL THEN id_posicao END) AS vazias
-      FROM estoque
-      WHERE status = 'ATIVO' AND estado = 'NORMAL' AND tipo_posicao ILIKE '%PICKING%'
+        COALESCE(SUM("disponível"), 0) AS total_pecas,
+        COUNT(DISTINCT "código_do_produto") AS total_skus,
+        COUNT(DISTINCT "id_local") AS capacidade,
+        COUNT(DISTINCT CASE WHEN "disponível" > 0 THEN "id_local" END) AS ocupadas,
+        COUNT(DISTINCT CASE WHEN "disponível" = 0 OR "disponível" IS NULL THEN "id_local" END) AS vazias
+      FROM "estoque"
+      WHERE ("local_ativo" ILIKE 'S' OR "local_ativo" ILIKE 'ATIVO' OR "local_ativo" = '1')
+        AND ("estado" ILIKE 'NORMAL' OR "estado" IS NULL)
+        AND "tipo_do_local" ILIKE '%PICKING%'
     `);
 
     // 3. Ocupação Pulmão
     const pulmao = await pool.query(`
       SELECT 
-        COALESCE(SUM(quantidade), 0) AS total_pecas,
-        COUNT(DISTINCT sku) AS total_skus,
-        COUNT(DISTINCT id_posicao) AS capacidade,
-        COUNT(DISTINCT CASE WHEN quantidade > 0 THEN id_posicao END) AS ocupadas,
-        COUNT(DISTINCT CASE WHEN quantidade = 0 OR quantidade IS NULL THEN id_posicao END) AS vazias
-      FROM estoque
-      WHERE status = 'ATIVO' AND estado = 'NORMAL' AND tipo_posicao ILIKE '%PULMÃO%'
+        COALESCE(SUM("disponível"), 0) AS total_pecas,
+        COUNT(DISTINCT "código_do_produto") AS total_skus,
+        COUNT(DISTINCT "id_local") AS capacidade,
+        COUNT(DISTINCT CASE WHEN "disponível" > 0 THEN "id_local" END) AS ocupadas,
+        COUNT(DISTINCT CASE WHEN "disponível" = 0 OR "disponível" IS NULL THEN "id_local" END) AS vazias
+      FROM "estoque"
+      WHERE ("local_ativo" ILIKE 'S' OR "local_ativo" ILIKE 'ATIVO' OR "local_ativo" = '1')
+        AND ("estado" ILIKE 'NORMAL' OR "estado" IS NULL)
+        AND ("tipo_do_local" ILIKE '%PULMÃO%' OR "tipo_do_local" ILIKE '%PULMAO%')
     `);
 
     res.json({
@@ -66,9 +69,8 @@ app.get('/api/dashboard', async (req, res) => {
       detalhe: err.message 
     });
   }
-}); // <-- Fechamento da rota /api/dashboard aqui!
+});
 
-// Rota para entregar o frontend
 app.get('/{*splat}', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
