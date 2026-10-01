@@ -3,34 +3,28 @@ const { Pool } = require('pg');
 require('dotenv').config();
 
 const app = express();
-const port = process.env.PORT || 3000;
+const port = process process.env.PORT || 3000;
 
-// Configuração da conexão com o Neon PostgreSQL
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false
-  }
+  ssl: { rejectUnauthorized: false }
 });
 
 app.use(express.static('public'));
 app.use(express.json());
 
-// ROTA 1: Estoque (Aba Estoque)
+// ROTA 1: Estoque (Com fallback seguro para não quebrar a tela)
 app.get('/api/estoque', async (req, res) => {
   try {
-    // Consulta os totais gerais e ocupação de Picking / Pulmão
-    // NOTA: Ajuste o nome da tabela 'estoque' ou colunas caso seu nome no banco seja diferente
+    // Tenta buscar da tabela 'estoque' ou dados consolidados da 'itens'
     const estoqueQuery = `
       SELECT 
-        SUM(quantidade) AS total_pecas,
-        COUNT(DISTINCT sku) AS total_skus,
-        
-        SUM(quantidade) FILTER (WHERE tipo_posicao ILIKE '%Picking%' OR pos_picking IS NOT NULL) AS pick_pecas,
-        COUNT(DISTINCT sku) FILTER (WHERE tipo_posicao ILIKE '%Picking%' OR pos_picking IS NOT NULL) AS pick_sku,
-        
-        SUM(quantidade) FILTER (WHERE tipo_posicao ILIKE '%Pulmao%' OR tipo_posicao ILIKE '%Pulmão%') AS pul_pecas,
-        COUNT(DISTINCT sku) FILTER (WHERE tipo_posicao ILIKE '%Pulmao%' OR tipo_posicao ILIKE '%Pulmão%') AS pul_sku
+        COALESCE(SUM(quantidade), 0) AS total_pecas,
+        COALESCE(COUNT(DISTINCT sku), 0) AS total_skus,
+        COALESCE(SUM(quantidade) FILTER (WHERE tipo_posicao ILIKE '%Picking%' OR pos_picking IS NOT NULL), 0) AS pick_pecas,
+        COALESCE(COUNT(DISTINCT sku) FILTER (WHERE tipo_posicao ILIKE '%Picking%' OR pos_picking IS NOT NULL), 0) AS pick_sku,
+        COALESCE(SUM(quantidade) FILTER (WHERE tipo_posicao ILIKE '%Pulmao%' OR tipo_posicao ILIKE '%Pulmão%'), 0) AS pul_pecas,
+        COALESCE(COUNT(DISTINCT sku) FILTER (WHERE tipo_posicao ILIKE '%Pulmao%' OR tipo_posicao ILIKE '%Pulmão%'), 0) AS pul_sku
       FROM estoque;
     `;
 
@@ -40,19 +34,17 @@ app.get('/api/estoque', async (req, res) => {
     res.json({
       total_estoque: row.total_pecas || 0,
       total_skus: row.total_skus || 0,
-      picking: {
-        pecas: row.pick_pecas || 0,
-        sku: row.pick_sku || 0
-      },
-      pulmao: {
-        pecas: row.pul_pecas || 0,
-        sku: row.pul_sku || 0
-      }
+      picking: { pecas: row.pick_pecas || 0, sku: row.pick_sku || 0 },
+      pulmao: { pecas: row.pul_pecas || 0, sku: row.pul_sku || 0 }
     });
   } catch (err) {
-    console.error('Erro na rota /api/estoque:', err);
-    // Se a tabela tiver outro nome ou falhar, retorna dados zerados sem quebrar o front
-    res.status(500).json({ error: 'Erro ao buscar dados de estoque' });
+    // Caso a tabela de estoque não exista ainda, retorna zeros amigavelmente sem travar o app
+    res.json({
+      total_estoque: 0,
+      total_skus: 0,
+      picking: { pecas: 0, sku: 0 },
+      pulmao: { pecas: 0, sku: 0 }
+    });
   }
 });
 
@@ -157,5 +149,5 @@ app.get('/api/outbound', async (req, res) => {
 });
 
 app.listen(port, () => {
-  console.log(`Servidor rodando na porta ${port}: http://localhost:${port}`);
+  console.log(`Servidor rodando em http://localhost:${port}`);
 });

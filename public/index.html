@@ -22,30 +22,26 @@
     /* Estilo Geral de Cabeçalho */
     .header { display: flex; justify-content: space-between; align-items: center; background: #000000; border-radius: 8px; margin-bottom: 12px; border: 1px solid #222; padding: 10px 15px; }
     
-    /* Topo Outbound Específico */
-    .header-outbound { display: grid; grid-template-columns: auto 180px 1fr auto; align-items: center; gap: 15px; }
-    .sla-box { border: 1px solid #555; border-radius: 6px; text-align: center; padding: 4px 10px; background: #080808; }
-    .sla-box span { font-size: 11px; color: #aaa; text-transform: uppercase; font-weight: bold; }
-    .sla-box strong { display: block; font-size: 22px; color: #fff; font-weight: 800; }
+    /* Topo Outbound Ajustado */
+    .header-outbound { display: flex; align-items: center; justify-content: space-between; gap: 15px; }
+    .kpi-top-group { display: flex; gap: 10px; align-items: center; }
     
-    .outbound-title { font-size: 26px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase; text-align: center; }
+    .top-box { border: 1px solid #333; border-radius: 6px; text-align: center; padding: 4px 12px; background: #121212; min-width: 110px; }
+    .top-box span { font-size: 10px; color: #aaa; text-transform: uppercase; font-weight: bold; display: block; }
+    .top-box strong { font-size: 18px; color: #fff; font-weight: 800; display: block; }
+
+    .outbound-title { font-size: 24px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase; text-align: center; }
     .date-picker-box { background: #1a1a1a; border: 1px solid #333; padding: 6px 12px; border-radius: 6px; font-size: 12px; color: #ccc; }
 
-    /* KPIs Outbound Topo */
+    /* KPIs Outbound Grid */
     .kpi-outbound-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; margin-bottom: 12px; }
     .kpi-card { background: #121212; border: 1px solid #222; border-radius: 8px; padding: 10px; text-align: center; }
     .kpi-card span { display: block; font-size: 11px; color: #aaa; margin-bottom: 4px; white-space: nowrap; }
     .kpi-card strong { font-size: 22px; color: #ffffff; display: block; }
     .kpi-card small { font-size: 10px; color: #666; display: block; margin-top: 2px; }
 
-    /* Layout Principal Outbound */
-    .outbound-layout { display: grid; grid-template-columns: 180px 1fr 340px; gap: 12px; }
-
-    /* Coluna KPIs Comparativos (Esquerda) */
-    .left-kpis { display: flex; flex-direction: column; gap: 10px; }
-    .comp-card { background: #121212; border: 1px solid #222; border-radius: 8px; padding: 14px 10px; text-align: center; }
-    .comp-card span { font-size: 11px; color: #aaa; display: block; margin-bottom: 6px; }
-    .comp-card strong { font-size: 22px; color: #fff; }
+    /* Layout Principal Novo */
+    .outbound-layout { display: grid; grid-template-columns: 1fr 340px; gap: 12px; }
 
     /* Área de Gráficos Centrais */
     .center-charts { display: flex; flex-direction: column; gap: 10px; }
@@ -112,7 +108,7 @@
   <!-- ABA 2: OUTBOUND - GERAL -->
   <div id="tab-outbound" class="tab-content active">
     
-    <!-- Topo Outbound -->
+    <!-- Topo Reorganizado com os 3 KPIs juntos -->
     <div class="header header-outbound">
       <div style="display: flex; align-items: center; gap: 10px;">
         <span style="font-weight: 900; font-size: 20px; font-style: italic;">LUFT</span>
@@ -120,9 +116,19 @@
         <span style="font-weight: 800; font-size: 18px; color: #60A5FA;">FTD</span>
       </div>
 
-      <div class="sla-box">
-        <span>% SLA</span>
-        <strong id="out-sla">-</strong>
+      <div class="kpi-top-group">
+        <div class="top-box">
+          <span>% SLA</span>
+          <strong id="out-sla">-</strong>
+        </div>
+        <div class="top-box">
+          <span>Integrado x Fcst</span>
+          <strong id="pct-int-fcst">-</strong>
+        </div>
+        <div class="top-box">
+          <span>Produzido x Fcst</span>
+          <strong id="pct-prod-fcst">-</strong>
+        </div>
       </div>
 
       <div class="outbound-title">OUTBOUND GERAL</div>
@@ -172,17 +178,7 @@
 
     <!-- Layout Principal -->
     <div class="outbound-layout">
-      <div class="left-kpis">
-        <div class="comp-card">
-          <span>Integrado x Fcst</span>
-          <strong id="pct-int-fcst">-</strong>
-        </div>
-        <div class="comp-card">
-          <span>Produzido x Fcst</span>
-          <strong id="pct-prod-fcst">-</strong>
-        </div>
-      </div>
-
+      
       <div class="center-charts">
         <div class="chart-box">
           <span class="chart-box-title">Peças Integradas por Data</span>
@@ -212,6 +208,7 @@
           <canvas id="chartStatusData"></canvas>
         </div>
       </div>
+
     </div>
 
   </div>
@@ -223,7 +220,6 @@
       return Number(num || 0).toLocaleString('pt-BR');
     }
 
-    // Gerenciador de Abas
     function abrirAba(nomeAba, elemento) {
       document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
       document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
@@ -238,13 +234,12 @@
       }
     }
 
-    // Carregamento da aba Estoque
     async function carregarEstoque() {
       try {
         const res = await fetch('/api/estoque');
         const data = await res.json();
 
-        if (!data || data.error) return;
+        if (!data) return;
 
         document.getElementById('top-estoque').innerText = fmt(data.total_estoque);
         document.getElementById('top-skus').innerText = fmt(data.total_skus);
@@ -260,7 +255,6 @@
       }
     }
 
-    // Carregamento da aba Outbound
     async function carregarOutbound() {
       try {
         const res = await fetch('/api/outbound');
@@ -290,7 +284,6 @@
         document.getElementById('kpi-expedidas').innerText = fmt(data.expedidas.pecas);
         document.getElementById('ped-expedidas').innerText = fmt(data.expedidas.pedidos);
 
-        // Gráficos Outbound
         const intData = data.graficos.integradas_por_data || [];
         renderizarBarra('chartIntegradasData', intData.map(d => d.data), intData.map(d => Number(d.total)), '#3B82F6');
 
@@ -356,7 +349,6 @@
       });
     }
 
-    // Carrega dados da aba ativa (Outbound) ao inicializar
     document.addEventListener('DOMContentLoaded', () => {
       carregarOutbound();
     });
