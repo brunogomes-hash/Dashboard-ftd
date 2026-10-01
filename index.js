@@ -32,7 +32,7 @@ app.get('/api/dashboard', async (req, res) => {
         COUNT(*) AS total_posicoes,
         COUNT(CASE WHEN "estoque"::text = '1' THEN 1 END) AS posicoes_ocupadas,
         COUNT(CASE WHEN "estoque"::text = '0' THEN 1 END) AS posicoes_vazias
-      FROM "Locais_ftd"
+      FROM "locais_ftd"
       WHERE "ativo" ILIKE 'S'
         AND "obs" IS NULL
         AND ("area" IN ('PP', 'PR', 'PQ', 'SP') OR "setor" IN ('PP', 'PR', 'PQ', 'SP') OR "rua"::text IN ('PP', 'PR', 'PQ', 'SP'))
@@ -55,7 +55,7 @@ app.get('/api/dashboard', async (req, res) => {
         COUNT(*) AS capacidade,
         COUNT(CASE WHEN "estoque"::text = '1' THEN 1 END) AS ocupadas,
         COUNT(CASE WHEN "estoque"::text = '0' THEN 1 END) AS vazias
-      FROM "Locais_ftd"
+      FROM "locais_ftd"
       WHERE "ativo" ILIKE 'S'
         AND "obs" IS NULL
         AND ("area" IN ('PP', 'PR', 'PQ', 'SP') OR "setor" IN ('PP', 'PR', 'PQ', 'SP') OR "rua"::text IN ('PP', 'PR', 'PQ', 'SP'))
@@ -79,7 +79,7 @@ app.get('/api/dashboard', async (req, res) => {
         COUNT(*) AS capacidade,
         COUNT(CASE WHEN "estoque"::text = '1' THEN 1 END) AS ocupadas,
         COUNT(CASE WHEN "estoque"::text = '0' THEN 1 END) AS vazias
-      FROM "Locais_ftd"
+      FROM "locais_ftd"
       WHERE "ativo" ILIKE 'S'
         AND "obs" IS NULL
         AND ("area" IN ('PP', 'PR', 'PQ', 'SP') OR "setor" IN ('PP', 'PR', 'PQ', 'SP') OR "rua"::text IN ('PP', 'PR', 'PQ', 'SP'))
