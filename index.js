@@ -15,7 +15,7 @@ const pool = new Pool({
 
 app.get('/api/dashboard', async (req, res) => {
   try {
-    // 1. Totais Gerais
+    // 1. Totais Gerais do Estoque
     const gerais = await pool.query(`
       SELECT 
         COALESCE(SUM("disponível"), 0) AS total_estoque,
@@ -28,7 +28,7 @@ app.get('/api/dashboard', async (req, res) => {
         AND ("estado" ILIKE 'NORMAL' OR "estado" IS NULL)
     `);
 
-    // 2. Ocupação Picking
+    // 2. Resumo Picking
     const picking = await pool.query(`
       SELECT 
         COALESCE(SUM("disponível"), 0) AS total_pecas,
@@ -42,7 +42,7 @@ app.get('/api/dashboard', async (req, res) => {
         AND "tipo_do_local" ILIKE '%PICKING%'
     `);
 
-    // 3. Ocupação Pulmão
+    // 3. Resumo Pulmão
     const pulmao = await pool.query(`
       SELECT 
         COALESCE(SUM("disponível"), 0) AS total_pecas,
@@ -56,10 +56,33 @@ app.get('/api/dashboard', async (req, res) => {
         AND ("tipo_do_local" ILIKE '%PULMÃO%' OR "tipo_do_local" ILIKE '%PULMAO%')
     `);
 
+    // 4. Dados detalhados para os Gráficos (Capacidade de Armazém vs Estoque)
+    const graficos = await pool.query(`
+      SELECT 
+        categoria_estrutura AS categoria,
+        fator_meta,
+        locais_livres_qtd AS posicoes_livres,
+        locais_ocupados_qtd AS posicoes_ocupadas,
+        locais_capacidade_qtd AS posicoes_capacidade,
+        livres_unidades AS pecas_livres,
+        ocupados_unidades_disponiveis AS pecas_ocupadas,
+        capacidade_total_unidades AS pecas_capacidade
+      FROM "capacidade_armazem"
+      ORDER BY 
+        CASE 
+          WHEN categoria_estrutura = 'PR - PRATELEIRA' THEN 1
+          WHEN categoria_estrutura = 'PQ - BLOCADO' THEN 2
+          WHEN categoria_estrutura = 'PP - PULMÃO' THEN 3
+          WHEN categoria_estrutura = 'PP - PICKING' THEN 4
+          ELSE 5
+        END
+    `);
+
     res.json({
       gerais: gerais.rows[0],
       picking: picking.rows[0],
       pulmao: pulmao.rows[0],
+      graficos: graficos.rows,
       ultima_atualizacao: new Date().toLocaleString('pt-BR')
     });
   } catch (err) {

@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dashboard de Estoque - LFT / FTD</title>
+  <!-- Chart.js para os gráficos -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
     body { background-color: #0b0c10; color: #ffffff; padding: 15px; }
@@ -26,14 +28,24 @@
     .section-title { display: inline-block; background: #e0e0e0; color: #000; padding: 4px 15px; border-radius: 12px; font-weight: bold; font-size: 13px; margin-bottom: 15px; }
 
     /* KPIs Internos */
-    .kpi-row { display: flex; justify-content: space-between; text-align: center; margin-bottom: 15px; background: #1a1a1a; padding: 10px; border-radius: 6px; }
+    .kpi-row { display: flex; justify-content: space-between; text-align: center; margin-bottom: 10px; background: #1a1a1a; padding: 10px; border-radius: 6px; }
     .kpi-item span { display: block; font-size: 11px; color: #aaa; }
     .kpi-item strong { font-size: 18px; color: #fff; }
 
     .pct-row { display: flex; justify-content: flex-end; gap: 15px; font-size: 11px; color: #45a29e; margin-bottom: 15px; }
 
-    /* Áreas de Gráfico / Visualização */
-    .chart-placeholder { height: 180px; background: #181818; border-radius: 6px; border: 1px dashed #333; display: flex; align-items: center; justify-content: center; color: #666; font-size: 13px; margin-top: 10px; }
+    /* Box e Legenda dos Gráficos */
+    .chart-box { background: #181818; border-radius: 8px; padding: 12px; border: 1px solid #282828; margin-top: 12px; }
+    .chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .chart-title-tag { background: #e0e0e0; color: #000; font-size: 11px; font-weight: bold; padding: 2px 10px; border-radius: 10px; }
+    .chart-legend { display: flex; gap: 12px; font-size: 11px; font-style: italic; }
+    .legend-item { display: flex; align-items: center; gap: 4px; }
+    .color-box { width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
+    .color-purple { background-color: #B57EDC; }
+    .color-green { background-color: #40C000; }
+    .color-blue { background-color: #3B82F6; }
+
+    .chart-container { position: relative; height: 190px; width: 100%; }
   </style>
 </head>
 <body>
@@ -75,8 +87,35 @@
         <span>Vazias %: <strong id="pick-vaz-pct">-</strong></span>
       </div>
 
-      <div class="chart-placeholder">Gráfico Ocupação Peças - Picking</div>
-      <div class="chart-placeholder">Gráfico Ocupação Posições - Picking</div>
+      <!-- Gráfico Peças Picking -->
+      <div class="chart-box">
+        <div class="chart-header">
+          <span class="chart-title-tag">Ocupação Peças - Picking</span>
+          <div class="chart-legend">
+            <span class="legend-item"><i class="color-box color-purple"></i> Capacidade Peças</span>
+            <span class="legend-item"><i class="color-box color-green"></i> Livres</span>
+            <span class="legend-item"><i class="color-box color-blue"></i> Ocupados</span>
+          </div>
+        </div>
+        <div class="chart-container">
+          <canvas id="chartPecasPicking"></canvas>
+        </div>
+      </div>
+
+      <!-- Gráfico Posições Picking -->
+      <div class="chart-box">
+        <div class="chart-header">
+          <span class="chart-title-tag">Ocupação Posições - Picking</span>
+          <div class="chart-legend">
+            <span class="legend-item"><i class="color-box color-purple"></i> Capacidade</span>
+            <span class="legend-item"><i class="color-box color-green"></i> Livres</span>
+            <span class="legend-item"><i class="color-box color-blue"></i> Ocupados</span>
+          </div>
+        </div>
+        <div class="chart-container">
+          <canvas id="chartPosicoesPicking"></canvas>
+        </div>
+      </div>
     </div>
 
     <!-- Ocupação Pulmão -->
@@ -96,8 +135,35 @@
         <span>Vazias %: <strong id="pul-vaz-pct">-</strong></span>
       </div>
 
-      <div class="chart-placeholder">Gráfico Ocupação Peças - Pulmão</div>
-      <div class="chart-placeholder">Gráfico Ocupação Posições - Pulmão</div>
+      <!-- Gráfico Peças Pulmão -->
+      <div class="chart-box">
+        <div class="chart-header">
+          <span class="chart-title-tag">Ocupação Peças - Pulmão</span>
+          <div class="chart-legend">
+            <span class="legend-item"><i class="color-box color-purple"></i> Capacidade Peças</span>
+            <span class="legend-item"><i class="color-box color-green"></i> Livres</span>
+            <span class="legend-item"><i class="color-box color-blue"></i> Ocupados</span>
+          </div>
+        </div>
+        <div class="chart-container">
+          <canvas id="chartPecasPulmao"></canvas>
+        </div>
+      </div>
+
+      <!-- Gráfico Posições Pulmão -->
+      <div class="chart-box">
+        <div class="chart-header">
+          <span class="chart-title-tag">Ocupação Posições - Pulmão</span>
+          <div class="chart-legend">
+            <span class="legend-item"><i class="color-box color-purple"></i> Capacidade</span>
+            <span class="legend-item"><i class="color-box color-green"></i> Livres</span>
+            <span class="legend-item"><i class="color-box color-blue"></i> Ocupados</span>
+          </div>
+        </div>
+        <div class="chart-container">
+          <canvas id="chartPosicoesPulmao"></canvas>
+        </div>
+      </div>
     </div>
 
   </div>
@@ -112,10 +178,76 @@
       return ((parte / total) * 100).toFixed(2).replace('.', ',') + '%';
     }
 
+    function renderizarGrafico(canvasId, labels, capacidade, ocupados, livres) {
+      const canvas = document.getElementById(canvasId);
+      if (!canvas) return;
+
+      const ctx = canvas.getContext('2d');
+
+      if (window[canvasId + '_chart']) {
+        window[canvasId + '_chart'].destroy();
+      }
+
+      window[canvasId + '_chart'] = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [
+            {
+              label: 'Capacidade',
+              data: capacidade,
+              backgroundColor: '#B57EDC', // Roxo
+              stack: 'stack1',
+              barPercentage: 0.5
+            },
+            {
+              label: 'Ocupados',
+              data: ocupados,
+              backgroundColor: '#3B82F6', // Azul
+              stack: 'stack2',
+              barPercentage: 0.5
+            },
+            {
+              label: 'Livres',
+              data: livres,
+              backgroundColor: '#40C000', // Verde
+              stack: 'stack2',
+              barPercentage: 0.5
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: { mode: 'index', intersect: false }
+          },
+          scales: {
+            x: {
+              stacked: false,
+              ticks: { color: '#FFFFFF', font: { weight: 'bold', size: 10 } },
+              grid: { display: false }
+            },
+            y: {
+              stacked: false,
+              ticks: { color: '#888888' },
+              grid: { color: '#222222' }
+            }
+          }
+        }
+      });
+    }
+
     async function carregarDashboard() {
       try {
         const res = await fetch('/api/dashboard');
         const data = await res.json();
+
+        if (!data || data.error) {
+          console.error('Erro na resposta:', data);
+          return;
+        }
 
         // Topo
         document.getElementById('top-estoque').innerText = fmt(data.gerais.total_estoque);
@@ -123,7 +255,7 @@
         document.getElementById('top-posicoes').innerText = fmt(data.gerais.total_posicoes);
         document.getElementById('top-ocupadas').innerText = fmt(data.gerais.posicoes_ocupadas);
         document.getElementById('top-vazias').innerText = fmt(data.gerais.posicoes_vazias);
-        document.getElementById('top-atualizacao').innerText = data.ultima_atualizacao;
+        document.getElementById('top-atualizacao').innerText = data.ultima_atualizacao || '-';
 
         // Picking
         document.getElementById('pick-pecas').innerText = fmt(data.picking.total_pecas);
@@ -143,13 +275,56 @@
         document.getElementById('pul-ocup-pct').innerText = calcPct(data.pulmao.ocupadas, data.pulmao.capacidade);
         document.getElementById('pul-vaz-pct').innerText = calcPct(data.pulmao.vazias, data.pulmao.capacidade);
 
+        // Gráficos
+        const graficosData = data.graficos || [];
+        const categoriasPicking = graficosData.map(g => g.categoria);
+
+        // 1. Gráfico Peças Picking
+        renderizarGrafico(
+          'chartPecasPicking',
+          categoriasPicking,
+          graficosData.map(g => Number(g.pecas_capacidade || 0)),
+          graficosData.map(g => Number(g.pecas_ocupadas || 0)),
+          graficosData.map(g => Number(g.pecas_livres || 0))
+        );
+
+        // 2. Gráfico Posições Picking
+        renderizarGrafico(
+          'chartPosicoesPicking',
+          categoriasPicking,
+          graficosData.map(g => Number(g.posicoes_capacidade || 0)),
+          graficosData.map(g => Number(g.posicoes_ocupadas || 0)),
+          graficosData.map(g => Number(g.posicoes_livres || 0))
+        );
+
+        // Filtrando para Pulmão
+        const pulmaoData = graficosData.filter(g => g.categoria && g.categoria.includes('PULMÃO'));
+        const categoriasPulmao = pulmaoData.map(g => g.categoria);
+
+        // 3. Gráfico Peças Pulmão
+        renderizarGrafico(
+          'chartPecasPulmao',
+          categoriasPulmao,
+          pulmaoData.map(g => Number(g.pecas_capacidade || 0)),
+          pulmaoData.map(g => Number(g.pecas_ocupadas || 0)),
+          pulmaoData.map(g => Number(g.pecas_livres || 0))
+        );
+
+        // 4. Gráfico Posições Pulmão
+        renderizarGrafico(
+          'chartPosicoesPulmao',
+          categoriasPulmao,
+          pulmaoData.map(g => Number(g.posicoes_capacidade || 0)),
+          pulmaoData.map(g => Number(g.posicoes_ocupadas || 0)),
+          pulmaoData.map(g => Number(g.posicoes_livres || 0))
+        );
+
       } catch (err) {
         console.error('Erro ao buscar dados:', err);
       }
     }
 
     carregarDashboard();
-    // Atualiza os dados a cada 30 segundos
     setInterval(carregarDashboard, 30000);
   </script>
 </body>
