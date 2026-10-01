@@ -14,7 +14,7 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
-// Endpoint que calcula os indicadores filtrando apenas endereços Ativos e de Estado Normal
+// Endpoint que calcula os indicadores
 app.get('/api/dashboard', async (req, res) => {
   try {
     // 1. Totais Gerais
@@ -66,12 +66,13 @@ app.get('/api/dashboard', async (req, res) => {
       detalhe: err.message 
     });
   }
+}); // <-- Fechamento da rota /api/dashboard aqui!
 
-// ✅ Código correto para Express v5:
+// Rota para entregar o frontend
 app.get('/{*splat}', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 app.listen(port, () => {
   console.log(`Servidor rodando na porta ${port}`);
-}); 
+});
