@@ -15,7 +15,7 @@ const pool = new Pool({
 
 app.get('/api/dashboard', async (req, res) => {
   try {
-    // 1. Totais Gerais do Estoque
+    // 1. Totais Gerais (Filtro por áreas PP, PR, PQ, SP e Estado Normal)
     const gerais = await pool.query(`
       SELECT 
         COALESCE(SUM("disponível"), 0) AS total_estoque,
@@ -26,6 +26,7 @@ app.get('/api/dashboard', async (req, res) => {
       FROM "estoque"
       WHERE ("local_ativo" ILIKE 'S' OR "local_ativo" ILIKE 'ATIVO' OR "local_ativo" = '1')
         AND ("estado" ILIKE 'NORMAL' OR "estado" IS NULL)
+        AND ("area" IN ('PP', 'PR', 'PQ', 'SP') OR "setor" IN ('PP', 'PR', 'PQ', 'SP') OR "rua"::text IN ('PP', 'PR', 'PQ', 'SP'))
     `);
 
     // 2. Resumo Picking
@@ -56,11 +57,10 @@ app.get('/api/dashboard', async (req, res) => {
         AND ("tipo_do_local" ILIKE '%PULMÃO%' OR "tipo_do_local" ILIKE '%PULMAO%')
     `);
 
-    // 4. Dados detalhados para os Gráficos (Capacidade de Armazém vs Estoque)
+    // 4. Dados para os Gráficos de Ocupação
     const graficos = await pool.query(`
       SELECT 
         categoria_estrutura AS categoria,
-        fator_meta,
         locais_livres_qtd AS posicoes_livres,
         locais_ocupados_qtd AS posicoes_ocupadas,
         locais_capacidade_qtd AS posicoes_capacidade,
@@ -87,10 +87,7 @@ app.get('/api/dashboard', async (req, res) => {
     });
   } catch (err) {
     console.error('Erro na consulta:', err);
-    res.status(500).json({ 
-      error: 'Erro na consulta do banco', 
-      detalhe: err.message 
-    });
+    res.status(500).json({ error: 'Erro no banco de dados', detalhe: err.message });
   }
 });
 

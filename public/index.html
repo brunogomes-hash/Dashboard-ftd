@@ -4,15 +4,15 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dashboard de Estoque - LFT / FTD</title>
-  <!-- Chart.js para os gráficos -->
+  <!-- Chart.js + Plugin de DataLabels para escrever os números nas barras -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
     body { background-color: #0b0c10; color: #ffffff; padding: 15px; }
 
     /* Cabeçalho */
     .header { display: flex; justify-content: space-between; align-items: center; background: #000000; padding: 10px 20px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #222; }
-    .logo-title { display: flex; align-items: center; gap: 15px; }
     .logo-title h2 { font-size: 22px; letter-spacing: 1px; color: #fff; }
     .kpi-top-container { display: flex; gap: 10px; }
     .kpi-top { background: #1f2833; padding: 6px 15px; border-radius: 6px; text-align: center; border: 1px solid #45a29e; }
@@ -45,7 +45,7 @@
     .color-green { background-color: #40C000; }
     .color-blue { background-color: #3B82F6; }
 
-    .chart-container { position: relative; height: 190px; width: 100%; }
+    .chart-container { position: relative; height: 210px; width: 100%; }
   </style>
 </head>
 <body>
@@ -169,6 +169,8 @@
   </div>
 
   <script>
+    Chart.register(ChartDataLabels);
+
     function fmt(num) {
       return Number(num || 0).toLocaleString('pt-BR');
     }
@@ -198,21 +200,24 @@
               data: capacidade,
               backgroundColor: '#B57EDC', // Roxo
               stack: 'stack1',
-              barPercentage: 0.5
+              categoryPercentage: 0.6,
+              barPercentage: 0.9
             },
             {
               label: 'Ocupados',
               data: ocupados,
-              backgroundColor: '#3B82F6', // Azul
+              backgroundColor: '#3B82F6', // Azul (Base)
               stack: 'stack2',
-              barPercentage: 0.5
+              categoryPercentage: 0.6,
+              barPercentage: 0.9
             },
             {
               label: 'Livres',
               data: livres,
-              backgroundColor: '#40C000', // Verde
+              backgroundColor: '#40C000', // Verde (Empilhado no topo)
               stack: 'stack2',
-              barPercentage: 0.5
+              categoryPercentage: 0.6,
+              barPercentage: 0.9
             }
           ]
         },
@@ -221,16 +226,23 @@
           maintainAspectRatio: false,
           plugins: {
             legend: { display: false },
-            tooltip: { mode: 'index', intersect: false }
+            tooltip: { mode: 'index', intersect: false },
+            datalabels: {
+              color: '#ffffff',
+              font: { weight: 'bold', size: 10 },
+              formatter: function(value) {
+                return value > 0 ? fmt(value) : '';
+              }
+            }
           },
           scales: {
             x: {
-              stacked: false,
+              stacked: true, // Garante que a stack2 empilhe
               ticks: { color: '#FFFFFF', font: { weight: 'bold', size: 10 } },
               grid: { display: false }
             },
             y: {
-              stacked: false,
+              stacked: true, // Garante escala proporcional idêntica para Roxo e Azul+Verde
               ticks: { color: '#888888' },
               grid: { color: '#222222' }
             }
@@ -244,10 +256,7 @@
         const res = await fetch('/api/dashboard');
         const data = await res.json();
 
-        if (!data || data.error) {
-          console.error('Erro na resposta:', data);
-          return;
-        }
+        if (!data || data.error) return;
 
         // Topo
         document.getElementById('top-estoque').innerText = fmt(data.gerais.total_estoque);
@@ -297,7 +306,7 @@
           graficosData.map(g => Number(g.posicoes_livres || 0))
         );
 
-        // Filtrando para Pulmão
+        // Pulmão
         const pulmaoData = graficosData.filter(g => g.categoria && g.categoria.includes('PULMÃO'));
         const categoriasPulmao = pulmaoData.map(g => g.categoria);
 
