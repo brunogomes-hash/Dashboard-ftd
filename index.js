@@ -13,9 +13,9 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
+// 1. ENDPOINT EXCLUSIVO PARA ESTOQUE (INDEPENDENTE)
 app.get('/api/dashboard', async (req, res) => {
   try {
-    // 1. Total Peças e SKUs vindo da tabela estoque (ORIGINAL)
     const pecasEstoque = await pool.query(`
       SELECT 
         COALESCE(SUM("disponível"), 0) AS total_estoque,
@@ -24,12 +24,8 @@ app.get('/api/dashboard', async (req, res) => {
       WHERE ("local_ativo" ILIKE 'S' OR "local_ativo" ILIKE 'ATIVO' OR "local_ativo" = '1')
         AND ("estado" ILIKE 'NORMAL' OR "estado" IS NULL)
         AND ("area" IN ('PP', 'PR', 'PQ', 'SP') OR "setor" IN ('PP', 'PR', 'PQ', 'SP') OR "rua"::text IN ('PP', 'PR', 'PQ', 'SP'))
-    `).catch(err => {
-      console.error("Erro pecasEstoque:", err.message);
-      return { rows: [{ total_estoque: 0, total_skus: 0 }] };
-    });
+    `);
 
-    // 2. SKUs e Peças por Tipo (Picking x Pulmão) da tabela estoque (ORIGINAL)
     const pickingPecas = await pool.query(`
       SELECT 
         COALESCE(SUM("disponível"), 0) AS total_pecas,
@@ -39,7 +35,7 @@ app.get('/api/dashboard', async (req, res) => {
         AND ("estado" ILIKE 'NORMAL' OR "estado" IS NULL)
         AND ("area" IN ('PP', 'PR', 'PQ', 'SP') OR "setor" IN ('PP', 'PR', 'PQ', 'SP') OR "rua"::text IN ('PP', 'PR', 'PQ', 'SP'))
         AND "tipo_do_local" ILIKE '%PICKING%'
-    `).catch(err => ({ rows: [{ total_pecas: 0, total_skus: 0 }] }));
+    `);
 
     const pulmaoPecas = await pool.query(`
       SELECT 
@@ -50,9 +46,8 @@ app.get('/api/dashboard', async (req, res) => {
         AND ("estado" ILIKE 'NORMAL' OR "estado" IS NULL)
         AND ("area" IN ('PP', 'PR', 'PQ', 'SP') OR "setor" IN ('PP', 'PR', 'PQ', 'SP') OR "rua"::text IN ('PP', 'PR', 'PQ', 'SP'))
         AND ("tipo_do_local" ILIKE '%PULMÃO%' OR "tipo_do_local" ILIKE '%PULMAO%')
-    `).catch(err => ({ rows: [{ total_pecas: 0, total_skus: 0 }] }));
+    `);
 
-    // 3. Tabela de Capacidade (ORIGINAL)
     const graficos = await pool.query(`
       SELECT 
         categoria_estrutura AS categoria,
@@ -71,32 +66,19 @@ app.get('/api/dashboard', async (req, res) => {
           WHEN categoria_estrutura = 'PP - PICKING' THEN 4
           ELSE 5
         END
-    `).catch(err => ({ rows: [] }));
-
-    // 4. Consulta corrigida para a tabela "itens"
-    const dadosItens = await pool.query(`
-      SELECT 
-        COALESCE(COUNT(DISTINCT "código_do_produto"), 0) AS total_itens
-      FROM "itens"
-    `).catch(err => {
-      console.error("Erro ao consultar tabela itens:", err.message);
-      return { rows: [{ total_itens: 0 }] };
-    });
+    `);
 
     const rowsCapacidade = graficos.rows || [];
 
-    // Soma Total do Armazém
     const totalPosicoesGeral = rowsCapacidade.reduce((acc, r) => acc + Number(r.posicoes_capacidade || 0), 0);
     const totalOcupadasGeral = rowsCapacidade.reduce((acc, r) => acc + Number(r.posicoes_ocupadas || 0), 0);
     const totalVaziasGeral = rowsCapacidade.reduce((acc, r) => acc + Number(r.posicoes_livres || 0), 0);
 
-    // Soma Picking
     const pickingRows = rowsCapacidade.filter(r => r.categoria && !r.categoria.includes('PP - PULMÃO'));
     const pickingCapacidade = pickingRows.reduce((acc, r) => acc + Number(r.posicoes_capacidade || 0), 0);
     const pickingOcupadas = pickingRows.reduce((acc, r) => acc + Number(r.posicoes_ocupadas || 0), 0);
     const pickingVazias = pickingRows.reduce((acc, r) => acc + Number(r.posicoes_livres || 0), 0);
 
-    // Soma Pulmão
     const pulmaoRows = rowsCapacidade.filter(r => r.categoria && r.categoria.includes('PP - PULMÃO'));
     const pulmaoCapacidade = pulmaoRows.reduce((acc, r) => acc + Number(r.posicoes_capacidade || 0), 0);
     const pulmaoOcupadas = pulmaoRows.reduce((acc, r) => acc + Number(r.posicoes_ocupadas || 0), 0);
@@ -108,8 +90,7 @@ app.get('/api/dashboard', async (req, res) => {
         total_skus: pecasEstoque.rows[0]?.total_skus || 0,
         total_posicoes: totalPosicoesGeral,
         posicoes_ocupadas: totalOcupadasGeral,
-        posicoes_vazias: totalVaziasGeral,
-        total_itens: dadosItens.rows[0]?.total_itens || 0
+        posicoes_vazias: totalVaziasGeral
       },
       picking: {
         total_pecas: pickingPecas.rows[0]?.total_pecas || 0,
@@ -129,8 +110,33 @@ app.get('/api/dashboard', async (req, res) => {
       ultima_atualizacao: new Date().toLocaleString('pt-BR')
     });
   } catch (err) {
-    console.error('Erro geral no endpoint:', err);
-    res.status(500).json({ error: 'Erro interno do servidor', detalhe: err.message });
+    console.error('Erro na API Estoque:', err);
+    res.status(500).json({ error: 'Erro ao carregar Estoque', detalhe: err.message });
+  }
+});
+
+// 2. ENDPOINT EXCLUSIVO PARA OUTBOUND - GERAL (TABELA ITENS)
+app.get('/api/outbound', async (req, res) => {
+  try {
+    const outboundData = await pool.query(`
+      SELECT 
+        COUNT(DISTINCT "código_do_produto") AS total_skus,
+        COALESCE(SUM("quantidade"), 0) AS total_quantidade,
+        COUNT(DISTINCT "nota_fiscal") AS total_notas,
+        COUNT(DISTINCT "pedido_de_venda") AS total_pedidos
+      FROM "itens"
+    `);
+
+    res.json({
+      total_skus: outboundData.rows[0]?.total_skus || 0,
+      total_quantidade: outboundData.rows[0]?.total_quantidade || 0,
+      total_notas: outboundData.rows[0]?.total_notas || 0,
+      total_pedidos: outboundData.rows[0]?.total_pedidos || 0,
+      ultima_atualizacao: new Date().toLocaleString('pt-BR')
+    });
+  } catch (err) {
+    console.error('Erro na API Outbound:', err);
+    res.status(500).json({ error: 'Erro ao carregar Outbound', detalhe: err.message });
   }
 });
 
