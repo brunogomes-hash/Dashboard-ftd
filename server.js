@@ -13,25 +13,52 @@ const pool = new Pool({
   }
 });
 
-// Servir arquivos estáticos (HTML, CSS, JS) da pasta "public"
 app.use(express.static('public'));
 app.use(express.json());
 
 // ROTA 1: Estoque (Aba Estoque)
 app.get('/api/estoque', async (req, res) => {
   try {
-    // Exemplo de busca de dados de estoque se houver tabela própria
-    res.json({ status: 'ok', mensagem: 'Dados de estoque' });
+    // Consulta os totais gerais e ocupação de Picking / Pulmão
+    // NOTA: Ajuste o nome da tabela 'estoque' ou colunas caso seu nome no banco seja diferente
+    const estoqueQuery = `
+      SELECT 
+        SUM(quantidade) AS total_pecas,
+        COUNT(DISTINCT sku) AS total_skus,
+        
+        SUM(quantidade) FILTER (WHERE tipo_posicao ILIKE '%Picking%' OR pos_picking IS NOT NULL) AS pick_pecas,
+        COUNT(DISTINCT sku) FILTER (WHERE tipo_posicao ILIKE '%Picking%' OR pos_picking IS NOT NULL) AS pick_sku,
+        
+        SUM(quantidade) FILTER (WHERE tipo_posicao ILIKE '%Pulmao%' OR tipo_posicao ILIKE '%Pulmão%') AS pul_pecas,
+        COUNT(DISTINCT sku) FILTER (WHERE tipo_posicao ILIKE '%Pulmao%' OR tipo_posicao ILIKE '%Pulmão%') AS pul_sku
+      FROM estoque;
+    `;
+
+    const result = await pool.query(estoqueQuery);
+    const row = result.rows[0] || {};
+
+    res.json({
+      total_estoque: row.total_pecas || 0,
+      total_skus: row.total_skus || 0,
+      picking: {
+        pecas: row.pick_pecas || 0,
+        sku: row.pick_sku || 0
+      },
+      pulmao: {
+        pecas: row.pul_pecas || 0,
+        sku: row.pul_sku || 0
+      }
+    });
   } catch (err) {
-    console.error('Erro na API /api/estoque:', err);
-    res.status(500).json({ error: 'Erro no servidor' });
+    console.error('Erro na rota /api/estoque:', err);
+    // Se a tabela tiver outro nome ou falhar, retorna dados zerados sem quebrar o front
+    res.status(500).json({ error: 'Erro ao buscar dados de estoque' });
   }
 });
 
-// ROTA 2: Outbound - Geral (Nova Aba)
+// ROTA 2: Outbound - Geral
 app.get('/api/outbound', async (req, res) => {
   try {
-    // 1. KPIs da tabela "saida_porcentagem"
     const kpiQuery = `
       SELECT 
         SUM(qtde_integrada) AS total_pecas_integradas,
@@ -44,7 +71,6 @@ app.get('/api/outbound', async (req, res) => {
       FROM saida_porcentagem;
     `;
 
-    // 2. Status operacionais da tabela "itens"
     const statusQuery = `
       SELECT 
         COUNT(DISTINCT pedido_de_venda) FILTER (WHERE status_operacional ILIKE '%Fluxo%') AS ped_fluxo,
@@ -61,7 +87,6 @@ app.get('/api/outbound', async (req, res) => {
       FROM itens;
     `;
 
-    // 3. Gráfico Peças Integradas por Data
     const integradasDataQuery = `
       SELECT importado_data AS data, SUM(quantidade) AS total
       FROM itens
@@ -70,7 +95,6 @@ app.get('/api/outbound', async (req, res) => {
       ORDER BY importado_data ASC;
     `;
 
-    // 4. Gráfico Faturados por Data
     const faturadosDataQuery = `
       SELECT faturado_data AS data, SUM(quantidade) AS quantidade, COUNT(DISTINCT nota_fiscal) AS nota_fiscal
       FROM itens
@@ -79,7 +103,6 @@ app.get('/api/outbound', async (req, res) => {
       ORDER BY faturado_data ASC;
     `;
 
-    // 5. Gráfico Expedidas por Data
     const expedidasDataQuery = `
       SELECT coletado_data AS data, SUM(quantidade) AS total
       FROM itens
@@ -88,7 +111,6 @@ app.get('/api/outbound', async (req, res) => {
       ORDER BY coletado_data ASC;
     `;
 
-    // 6. Gráfico Lateral (Status por Data)
     const statusPorDataQuery = `
       SELECT 
         importado_data AS data,
@@ -101,7 +123,6 @@ app.get('/api/outbound', async (req, res) => {
       ORDER BY importado_data DESC;
     `;
 
-    // Executa as consultas em paralelo para alta performance
     const [kpis, status, integradas, faturados, expedidas, statusData] = await Promise.all([
       pool.query(kpiQuery),
       pool.query(statusQuery),
@@ -135,7 +156,6 @@ app.get('/api/outbound', async (req, res) => {
   }
 });
 
-// Inicia o servidor Node
 app.listen(port, () => {
   console.log(`Servidor rodando na porta ${port}: http://localhost:${port}`);
 });

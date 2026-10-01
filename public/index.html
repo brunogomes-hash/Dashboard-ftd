@@ -112,7 +112,7 @@
   <!-- ABA 2: OUTBOUND - GERAL -->
   <div id="tab-outbound" class="tab-content active">
     
-    <!-- Topo -->
+    <!-- Topo Outbound -->
     <div class="header header-outbound">
       <div style="display: flex; align-items: center; gap: 10px;">
         <span style="font-weight: 900; font-size: 20px; font-style: italic;">LUFT</span>
@@ -170,10 +170,8 @@
       </div>
     </div>
 
-    <!-- Layout Principal com 3 Colunas -->
+    <!-- Layout Principal -->
     <div class="outbound-layout">
-      
-      <!-- Coluna 1: Acompanhamento de Forecast -->
       <div class="left-kpis">
         <div class="comp-card">
           <span>Integrado x Fcst</span>
@@ -185,7 +183,6 @@
         </div>
       </div>
 
-      <!-- Coluna 2: Gráficos de Evolução Diária -->
       <div class="center-charts">
         <div class="chart-box">
           <span class="chart-box-title">Peças Integradas por Data</span>
@@ -209,14 +206,12 @@
         </div>
       </div>
 
-      <!-- Coluna 3: Status por Data -->
       <div class="right-chart">
         <span class="chart-box-title">Peças por Data e Status</span>
         <div class="right-chart-container">
           <canvas id="chartStatusData"></canvas>
         </div>
       </div>
-
     </div>
 
   </div>
@@ -228,7 +223,7 @@
       return Number(num || 0).toLocaleString('pt-BR');
     }
 
-    // Alternador de Abas
+    // Gerenciador de Abas
     function abrirAba(nomeAba, elemento) {
       document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
       document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
@@ -238,10 +233,34 @@
 
       if (nomeAba === 'outbound') {
         carregarOutbound();
+      } else if (nomeAba === 'estoque') {
+        carregarEstoque();
       }
     }
 
-    // Carregamento dinâmico da aba Outbound via API Backend
+    // Carregamento da aba Estoque
+    async function carregarEstoque() {
+      try {
+        const res = await fetch('/api/estoque');
+        const data = await res.json();
+
+        if (!data || data.error) return;
+
+        document.getElementById('top-estoque').innerText = fmt(data.total_estoque);
+        document.getElementById('top-skus').innerText = fmt(data.total_skus);
+
+        document.getElementById('pick-pecas').innerText = fmt(data.picking?.pecas);
+        document.getElementById('pick-sku').innerText = fmt(data.picking?.sku);
+
+        document.getElementById('pul-pecas').innerText = fmt(data.pulmao?.pecas);
+        document.getElementById('pul-sku').innerText = fmt(data.pulmao?.sku);
+
+      } catch (err) {
+        console.error('Erro ao carregar Estoque:', err);
+      }
+    }
+
+    // Carregamento da aba Outbound
     async function carregarOutbound() {
       try {
         const res = await fetch('/api/outbound');
@@ -249,7 +268,6 @@
 
         if (!data || data.error) return;
 
-        // KPIs Superiores
         document.getElementById('out-sla').innerText = data.sla;
         document.getElementById('pct-int-fcst').innerText = data.pct_integrado_fcst;
         document.getElementById('pct-prod-fcst').innerText = data.pct_produzido_fcst;
@@ -272,19 +290,16 @@
         document.getElementById('kpi-expedidas').innerText = fmt(data.expedidas.pecas);
         document.getElementById('ped-expedidas').innerText = fmt(data.expedidas.pedidos);
 
-        // Gráfico 1: Peças Integradas por Data
+        // Gráficos Outbound
         const intData = data.graficos.integradas_por_data || [];
         renderizarBarra('chartIntegradasData', intData.map(d => d.data), intData.map(d => Number(d.total)), '#3B82F6');
 
-        // Gráfico 2: Faturados por Data
         const fatData = data.graficos.faturados_por_data || [];
         renderizarLinha('chartFaturadosData', fatData.map(d => d.data), fatData.map(d => Number(d.quantidade)), fatData.map(d => Number(d.nota_fiscal)));
 
-        // Gráfico 3: Expedidas por Data
         const expData = data.graficos.expedidas_por_data || [];
         renderizarBarra('chartExpedidasData', expData.map(d => d.data), expData.map(d => Number(d.total)), '#3B82F6');
 
-        // Gráfico 4: Status por Data (Horizontal)
         const stData = data.graficos.status_por_data || [];
         renderizarStatusEmpilhado('chartStatusData', stData);
 
@@ -341,7 +356,7 @@
       });
     }
 
-    // Executa a busca automática ao abrir
+    // Carrega dados da aba ativa (Outbound) ao inicializar
     document.addEventListener('DOMContentLoaded', () => {
       carregarOutbound();
     });
