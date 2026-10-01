@@ -13,7 +13,7 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
-// 1. ENDPOINT EXCLUSIVO PARA ESTOQUE (INDEPENDENTE)
+// ROUTE 1: ESTOQUE
 app.get('/api/dashboard', async (req, res) => {
   try {
     const pecasEstoque = await pool.query(`
@@ -69,20 +69,12 @@ app.get('/api/dashboard', async (req, res) => {
     `);
 
     const rowsCapacidade = graficos.rows || [];
-
     const totalPosicoesGeral = rowsCapacidade.reduce((acc, r) => acc + Number(r.posicoes_capacidade || 0), 0);
     const totalOcupadasGeral = rowsCapacidade.reduce((acc, r) => acc + Number(r.posicoes_ocupadas || 0), 0);
     const totalVaziasGeral = rowsCapacidade.reduce((acc, r) => acc + Number(r.posicoes_livres || 0), 0);
 
     const pickingRows = rowsCapacidade.filter(r => r.categoria && !r.categoria.includes('PP - PULMÃO'));
-    const pickingCapacidade = pickingRows.reduce((acc, r) => acc + Number(r.posicoes_capacidade || 0), 0);
-    const pickingOcupadas = pickingRows.reduce((acc, r) => acc + Number(r.posicoes_ocupadas || 0), 0);
-    const pickingVazias = pickingRows.reduce((acc, r) => acc + Number(r.posicoes_livres || 0), 0);
-
     const pulmaoRows = rowsCapacidade.filter(r => r.categoria && r.categoria.includes('PP - PULMÃO'));
-    const pulmaoCapacidade = pulmaoRows.reduce((acc, r) => acc + Number(r.posicoes_capacidade || 0), 0);
-    const pulmaoOcupadas = pulmaoRows.reduce((acc, r) => acc + Number(r.posicoes_ocupadas || 0), 0);
-    const pulmaoVazias = pulmaoRows.reduce((acc, r) => acc + Number(r.posicoes_livres || 0), 0);
 
     res.json({
       gerais: {
@@ -95,48 +87,68 @@ app.get('/api/dashboard', async (req, res) => {
       picking: {
         total_pecas: pickingPecas.rows[0]?.total_pecas || 0,
         total_skus: pickingPecas.rows[0]?.total_skus || 0,
-        capacidade: pickingCapacidade,
-        ocupadas: pickingOcupadas,
-        vazias: pickingVazias
+        capacidade: pickingRows.reduce((acc, r) => acc + Number(r.posicoes_capacidade || 0), 0),
+        ocupadas: pickingRows.reduce((acc, r) => acc + Number(r.posicoes_ocupadas || 0), 0),
+        vazias: pickingRows.reduce((acc, r) => acc + Number(r.posicoes_livres || 0), 0)
       },
       pulmao: {
         total_pecas: pulmaoPecas.rows[0]?.total_pecas || 0,
         total_skus: pulmaoPecas.rows[0]?.total_skus || 0,
-        capacidade: pulmaoCapacidade,
-        ocupadas: pulmaoOcupadas,
-        vazias: pulmaoVazias
+        capacidade: pulmaoRows.reduce((acc, r) => acc + Number(r.posicoes_capacidade || 0), 0),
+        ocupadas: pulmaoRows.reduce((acc, r) => acc + Number(r.posicoes_ocupadas || 0), 0),
+        vazias: pulmaoRows.reduce((acc, r) => acc + Number(r.posicoes_livres || 0), 0)
       },
       graficos: rowsCapacidade,
       ultima_atualizacao: new Date().toLocaleString('pt-BR')
     });
   } catch (err) {
-    console.error('Erro na API Estoque:', err);
-    res.status(500).json({ error: 'Erro ao carregar Estoque', detalhe: err.message });
+    res.status(500).json({ error: 'Erro no Estoque', detalhe: err.message });
   }
 });
 
-// 2. ENDPOINT EXCLUSIVO PARA OUTBOUND - GERAL (TABELA ITENS)
+// ROUTE 2: OUTBOUND GERAL (LAYOUT COMPLETO)
 app.get('/api/outbound', async (req, res) => {
   try {
-    const outboundData = await pool.query(`
+    const kpis = await pool.query(`
       SELECT 
-        COUNT(DISTINCT "código_do_produto") AS total_skus,
-        COALESCE(SUM("quantidade"), 0) AS total_quantidade,
-        COUNT(DISTINCT "nota_fiscal") AS total_notas,
-        COUNT(DISTINCT "pedido_de_venda") AS total_pedidos
+        COALESCE(SUM("quantidade"), 0) AS total_integradas,
+        COUNT(DISTINCT "pedido_de_venda") AS pedidos_integrados,
+        
+        COALESCE(SUM(CASE WHEN "coletado_em" IS NOT NULL THEN "quantidade" ELSE 0 END), 0) AS total_expedidas,
+        COUNT(DISTINCT CASE WHEN "coletado_em" IS NOT NULL THEN "pedido_de_venda" END) AS pedidos_expedidos,
+
+        COALESCE(SUM(CASE WHEN "processado_em" IS NOT NULL THEN "quantidade" ELSE 0 END), 0) AS total_produzidas,
+        COUNT(DISTINCT CASE WHEN "processado_em" IS NOT NULL THEN "pedido_de_venda" END) AS pedidos_produzidos,
+
+        COALESCE(SUM(CASE WHEN "status_da_nota_fiscal" ILIKE '%RETENÇÃO%' THEN "quantidade" ELSE 0 END), 0) AS total_tratativa,
+        COUNT(DISTINCT CASE WHEN "status_da_nota_fiscal" ILIKE '%RETENÇÃO%' THEN "pedido_de_venda" END) AS pedidos_tratativa
       FROM "itens"
     `);
 
+    const r = kpis.rows[0] || {};
+
     res.json({
-      total_skus: outboundData.rows[0]?.total_skus || 0,
-      total_quantidade: outboundData.rows[0]?.total_quantidade || 0,
-      total_notas: outboundData.rows[0]?.total_notas || 0,
-      total_pedidos: outboundData.rows[0]?.total_pedidos || 0,
+      forecast_pecas: 0,
+      pecas_integradas: Number(r.total_integradas || 0),
+      pedidos_integradas: Number(r.pedidos_integrados || 0),
+      pecas_fluxo: 0,
+      pedidos_fluxo: 0,
+      em_coleta: 0,
+      pedidos_coleta: 0,
+      em_tratativa: Number(r.total_tratativa || 0),
+      pedidos_tratativa: Number(r.pedidos_tratativa || 0),
+      pecas_produzidas: Number(r.total_produzidas || 0),
+      pedidos_produzidas: Number(r.pedidos_produzidos || 0),
+      pecas_expedidas: Number(r.total_expedidas || 0),
+      pedidos_expedidas: Number(r.pedidos_expedidos || 0),
+      sla_pct: 100.0,
+      integrado_vs_fcst: 0.0,
+      produzido_vs_fcst: 0.0,
       ultima_atualizacao: new Date().toLocaleString('pt-BR')
     });
   } catch (err) {
-    console.error('Erro na API Outbound:', err);
-    res.status(500).json({ error: 'Erro ao carregar Outbound', detalhe: err.message });
+    console.error('Erro no Outbound:', err);
+    res.status(500).json({ error: 'Erro no Outbound', detalhe: err.message });
   }
 });
 
@@ -144,6 +156,4 @@ app.get('/{*splat}', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-app.listen(port, () => {
-  console.log(`Servidor rodando na porta ${port}`);
-});
+app.listen(port, () => console.log(`Rodando na porta ${port}`));
