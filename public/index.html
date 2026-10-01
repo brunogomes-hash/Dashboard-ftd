@@ -53,15 +53,17 @@
 
     .chart-container { position: relative; height: 210px; width: 100%; }
 
-    /* ESTILOS DA ABA OUTBOUND - IGUAL DA SEGUNDA IMAGEM */
+    /* ESTILOS DA ABA OUTBOUND */
     .outbound-header { display: flex; align-items: center; justify-content: space-between; background: #000; padding: 6px 12px; border-radius: 6px; margin-bottom: 8px; border: 1px solid #222; }
-    .logos-box { display: flex; align-items: center; gap: 10px; }
+    .logos-box { display: flex; align-items: center; gap: 8px; }
     .logo-badge { background: #1a2a3a; color: #fff; font-weight: 900; padding: 6px 12px; border-radius: 4px; font-size: 16px; font-style: italic; }
-    .logo-sub { background: #fff; color: #000; font-weight: bold; padding: 4px 8px; border-radius: 4px; font-size: 12px; }
+    .logo-sub { background: #fff; color: #000; font-weight: bold; padding: 4px 8px; border-radius: 4px; font-size: 12px; margin-right: 6px; }
     
-    .sla-box { border: 1px solid #fff; padding: 4px 12px; border-radius: 4px; text-align: center; }
-    .sla-box span { font-size: 9px; display: block; }
-    .sla-box strong { font-size: 16px; color: #fff; }
+    /* GRUPO DE CARDS REUNIDOS AO LADO DO SLA NO CABEÇALHO */
+    .header-kpis-group { display: flex; align-items: center; gap: 6px; }
+    .header-kpi-card { border: 1px solid #ffffff; padding: 4px 10px; border-radius: 4px; text-align: center; background: #000; min-width: 90px; }
+    .header-kpi-card span { font-size: 9px; display: block; color: #ccc; white-space: nowrap; }
+    .header-kpi-card strong { font-size: 15px; color: #fff; }
 
     .main-title-outbound { font-size: 24px; font-weight: 900; letter-spacing: 2px; }
     .date-filter-box { background: #1c1c1c; border: 1px solid #333; padding: 6px 12px; border-radius: 4px; font-size: 11px; color: #aaa; }
@@ -72,13 +74,8 @@
     .kpi-card-outbound .title { font-size: 12px; font-weight: bold; color: #e0e0e0; }
     .kpi-card-outbound .sub { font-size: 10px; color: #888; }
 
-    /* Layout do Corpo Outbound */
-    .outbound-body-grid { display: grid; grid-template-columns: 140px 1fr 300px; gap: 8px; }
-
-    .left-side-kpis { display: flex; flex-direction: column; gap: 8px; }
-    .kpi-sq-card { background: #181818; border: 1px solid #2a2a2a; border-radius: 6px; padding: 12px; text-align: center; height: 95px; display: flex; flex-direction: column; justify-content: center; }
-    .kpi-sq-card span { font-size: 11px; font-weight: bold; color: #e0e0e0; margin-bottom: 6px; }
-    .kpi-sq-card strong { font-size: 20px; color: #fff; }
+    /* Layout do Corpo Outbound (Ajustado para ocupar toda a largura sem a coluna da esquerda) */
+    .outbound-body-grid { display: grid; grid-template-columns: 1fr 300px; gap: 8px; }
 
     .center-charts { display: flex; flex-direction: column; gap: 8px; }
     .chart-panel { background: #181818; border: 1px solid #2a2a2a; border-radius: 6px; padding: 8px; height: 180px; position: relative; }
@@ -87,6 +84,7 @@
     .right-chart { background: #181818; border: 1px solid #2a2a2a; border-radius: 6px; padding: 8px; position: relative; height: 556px; }
 
     .empty-chart-icon { display: flex; align-items: center; justify-content: center; height: 100%; color: #444; font-size: 32px; }
+    .chart-container-outbound { position: relative; height: 100%; width: 100%; padding-top: 20px; }
   </style>
 </head>
 <body>
@@ -195,15 +193,27 @@
     </div>
   </div>
 
-  <!-- ABA 2: OUTBOUND GERAL (LAYOUT COMPLETO DA SEGUNDA IMAGEM) -->
+  <!-- ABA 2: OUTBOUND GERAL -->
   <div id="tab-outbound" class="tab-content">
     <div class="outbound-header">
       <div class="logos-box">
         <div class="logo-badge">LUFT LOGISTICS</div>
         <div class="logo-sub">FTD educação</div>
-        <div class="sla-box">
-          <span>% SLA</span>
-          <strong id="out-sla">100,00%</strong>
+        
+        <!-- CARDS COLOCADOS UM AO LADO DO OUTRO NO CABEÇALHO -->
+        <div class="header-kpis-group">
+          <div class="header-kpi-card">
+            <span>% SLA</span>
+            <strong id="out-sla">100,00%</strong>
+          </div>
+          <div class="header-kpi-card">
+            <span>Intregado x Fcst</span>
+            <strong id="integ-vs-fcst">0,00%</strong>
+          </div>
+          <div class="header-kpi-card">
+            <span>Produzido x Fcst</span>
+            <strong id="prod-vs-fcst">1,14%</strong>
+          </div>
         </div>
       </div>
 
@@ -246,30 +256,21 @@
       </div>
     </div>
 
-    <!-- Grid do Corpo -->
+    <!-- Grid do Corpo (Sem a coluna esquerda) -->
     <div class="outbound-body-grid">
-      <!-- Esquerda (KPIs % Vs FCST) -->
-      <div class="left-side-kpis">
-        <div class="kpi-sq-card">
-          <span>Intregado x Fcst</span>
-          <strong id="integ-vs-fcst">0,00%</strong>
-        </div>
-        <div class="kpi-sq-card">
-          <span>Produzido x Fcst</span>
-          <strong id="prod-vs-fcst">1,14%</strong>
-        </div>
-      </div>
-
       <!-- Centro (Painéis de Gráficos) -->
       <div class="center-charts">
         <div class="chart-panel">
           <span class="chart-panel-tag">Peças Integradas por Data</span>
           <div class="empty-chart-icon">📈</div>
         </div>
+        
+        <!-- GRÁFICO ALIMENTADO PELA TABELA (saida_conferida_pecas) -->
         <div class="chart-panel">
           <span class="chart-panel-tag">Peças e Pedidos Faturados por Data</span>
-          <div class="empty-chart-icon">📊</div>
+          <div class="chart-container-outbound"><canvas id="chartFaturados"></canvas></div>
         </div>
+
         <div class="chart-panel">
           <span class="chart-panel-tag">Peças Expedidas por Data</span>
           <div class="empty-chart-icon">📉</div>
@@ -355,28 +356,41 @@
         const data = await res.json();
         if (!data || data.error) return;
 
-        document.getElementById('top-estoque').innerText = fmt(data.gerais.total_estoque);
-        document.getElementById('top-skus').innerText = fmt(data.gerais.total_skus);
-        document.getElementById('top-posicoes').innerText = fmt(data.gerais.total_posicoes);
-        document.getElementById('top-ocupadas').innerText = fmt(data.gerais.posicoes_ocupadas);
-        document.getElementById('top-vazias').innerText = fmt(data.gerais.posicoes_vazias);
+        // Suporte resiliente às chaves do backend
+        const pickPecas = Number(data.picking?.total_pecas || data.picking?.pecas || 0);
+        const pickSkus  = Number(data.picking?.total_skus  || data.picking?.skus  || 0);
+        const pickCap   = Number(data.picking?.capacidade   || 0);
+        const pickOcup  = Number(data.picking?.ocupadas     || 0);
+        const pickVaz   = Number(data.picking?.vazias       || 0);
+
+        document.getElementById('pick-pecas').innerText = fmt(pickPecas);
+        document.getElementById('pick-sku').innerText   = fmt(pickSkus);
+        document.getElementById('pick-cap').innerText   = fmt(pickCap);
+        document.getElementById('pick-ocup').innerText  = fmt(pickOcup);
+        document.getElementById('pick-vaz').innerText   = fmt(pickVaz);
+        document.getElementById('pick-ocup-pct').innerText = calcPct(pickOcup, pickCap);
+        document.getElementById('pick-vaz-pct').innerText  = calcPct(pickVaz, pickCap);
+
+        const pulPecas = Number(data.pulmao?.total_pecas || data.pulmao?.pecas || 0);
+        const pulSkus  = Number(data.pulmao?.total_skus  || data.pulmao?.skus  || 0);
+        const pulCap   = Number(data.pulmao?.capacidade   || 0);
+        const pulOcup  = Number(data.pulmao?.ocupadas     || 0);
+        const pulVaz   = Number(data.pulmao?.vazias       || 0);
+
+        document.getElementById('pul-pecas').innerText = fmt(pulPecas);
+        document.getElementById('pul-sku').innerText   = fmt(pulSkus);
+        document.getElementById('pul-cap').innerText   = fmt(pulCap);
+        document.getElementById('pul-ocup').innerText  = fmt(pulOcup);
+        document.getElementById('pul-vaz').innerText   = fmt(pulVaz);
+        document.getElementById('pul-ocup-pct').innerText = calcPct(pulOcup, pulCap);
+        document.getElementById('pul-vaz-pct').innerText  = calcPct(pulVaz, pulCap);
+
+        document.getElementById('top-estoque').innerText  = fmt(data.gerais?.total_estoque || (pickPecas + pulPecas));
+        document.getElementById('top-skus').innerText     = fmt(data.gerais?.total_skus || Math.max(pickSkus, pulSkus));
+        document.getElementById('top-posicoes').innerText = fmt(data.gerais?.total_posicoes || (pickCap + pulCap));
+        document.getElementById('top-ocupadas').innerText = fmt(data.gerais?.posicoes_ocupadas || (pickOcup + pulOcup));
+        document.getElementById('top-vazias').innerText   = fmt(data.gerais?.posicoes_vazias || (pickVaz + pulVaz));
         document.getElementById('top-atualizacao').innerText = data.ultima_atualizacao || '-';
-
-        document.getElementById('pick-pecas').innerText = fmt(data.picking.total_pecas);
-        document.getElementById('pick-sku').innerText = fmt(data.picking.total_skus);
-        document.getElementById('pick-cap').innerText = fmt(data.picking.capacidade);
-        document.getElementById('pick-ocup').innerText = fmt(data.picking.ocupadas);
-        document.getElementById('pick-vaz').innerText = fmt(data.picking.vazias);
-        document.getElementById('pick-ocup-pct').innerText = calcPct(data.picking.ocupadas, data.picking.capacidade);
-        document.getElementById('pick-vaz-pct').innerText = calcPct(data.picking.vazias, data.picking.capacidade);
-
-        document.getElementById('pul-pecas').innerText = fmt(data.pulmao.total_pecas);
-        document.getElementById('pul-sku').innerText = fmt(data.pulmao.total_skus);
-        document.getElementById('pul-cap').innerText = fmt(data.pulmao.capacidade);
-        document.getElementById('pul-ocup').innerText = fmt(data.pulmao.ocupadas);
-        document.getElementById('pul-vaz').innerText = fmt(data.pulmao.vazias);
-        document.getElementById('pul-ocup-pct').innerText = calcPct(data.pulmao.ocupadas, data.pulmao.capacidade);
-        document.getElementById('pul-vaz-pct').innerText = calcPct(data.pulmao.vazias, data.pulmao.capacidade);
 
         const graficosData = data.graficos || [];
         const pickingData = graficosData.filter(g => g.categoria && !g.categoria.includes('PP - PULMÃO'));
@@ -401,13 +415,63 @@
         const data = await res.json();
         if (!data || data.error) return;
 
+        if (data.sla) document.getElementById('out-sla').innerText = data.sla;
+        if (data.integ_vs_fcst) document.getElementById('integ-vs-fcst').innerText = data.integ_vs_fcst;
+        if (data.prod_vs_fcst) document.getElementById('prod-vs-fcst').innerText = data.prod_vs_fcst;
+
         document.getElementById('integ-ped').innerText = fmt(data.pedidos_integradas);
         document.getElementById('trat-ped').innerText = fmt(data.pedidos_tratativa);
         document.getElementById('prod-ped').innerText = fmt(data.pedidos_produzidas);
         document.getElementById('exp-ped').innerText = fmt(data.pedidos_expedidas);
+
+        // Renderiza o gráfico Faturados utilizando a tabela "saida_conferida_pecas"
+        const faturadosData = data.saida_conferida_pecas || [];
+        const labelsDatas = faturadosData.map(i => new Date(i.data).toLocaleDateString('pt-BR', {day: '2-digit', month: '2-digit'}));
+        const totalPecas = faturadosData.map(i => Number(i.total_peças_conferidas || 0));
+
+        renderChartFaturados(labelsDatas, totalPecas);
       } catch (err) {
         console.error('Erro ao carregar outbound:', err);
       }
+    }
+
+    function renderChartFaturados(labels, dataValores) {
+      const canvas = document.getElementById('chartFaturados');
+      if (!canvas) return;
+
+      const ctx = canvas.getContext('2d');
+      if (window.chartFaturadosObj) window.chartFaturadosObj.destroy();
+
+      window.chartFaturadosObj = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels.length ? labels : [],
+          datasets: [{
+            label: 'Total Peças Conferidas',
+            data: dataValores,
+            backgroundColor: '#3B82F6',
+            borderRadius: 4
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            datalabels: {
+              color: '#fff',
+              anchor: 'end',
+              align: 'top',
+              font: { weight: 'bold', size: 10 },
+              formatter: val => val > 0 ? fmt(val) : ''
+            }
+          },
+          scales: {
+            x: { ticks: { color: '#888' }, grid: { display: false } },
+            y: { ticks: { color: '#888' }, grid: { color: '#222' } }
+          }
+        }
+      });
     }
 
     carregarEstoque();
