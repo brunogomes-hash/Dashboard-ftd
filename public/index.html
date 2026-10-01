@@ -198,27 +198,30 @@
               label: 'Capacidade',
               data: capacidade,
               backgroundColor: '#B57EDC',
-              stack: 'stack1'
+              stack: 'stack1',
+              maxBarThickness: 60 // Padroniza a largura máxima para não esticar
             },
             {
               label: 'Ocupados',
               data: ocupados,
               backgroundColor: '#3B82F6',
-              stack: 'stack2'
+              stack: 'stack2',
+              maxBarThickness: 60
             },
             {
               label: 'Livres',
               data: livres,
               backgroundColor: '#40C000',
-              stack: 'stack2'
+              stack: 'stack2',
+              maxBarThickness: 60
             }
           ]
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
-          categoryPercentage: 0.8, // Mantém barras próximas
-          barPercentage: 1.0,      // Gruda o roxo no bloco empilhado (azul + verde)
+          categoryPercentage: 0.8,
+          barPercentage: 1.0,
           plugins: {
             legend: { display: false },
             tooltip: { mode: 'index', intersect: false },
