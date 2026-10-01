@@ -3,97 +3,339 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dashboard - Estoque</title>
+  <title>Dashboard de Estoque</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-    body { background-color: #0b0c10; color: #ffffff; padding: 20px; }
+    body { background-color: #0b0c10; color: #ffffff; padding: 12px; }
 
-    /* Cabeçalho Estoque */
-    .header { display: flex; justify-content: space-between; align-items: center; background: #121212; border-radius: 8px; margin-bottom: 20px; border: 1px solid #222; padding: 15px 20px; }
-    .header-title { font-size: 24px; font-weight: 800; letter-spacing: 2px; }
+    /* Cabeçalho sem o bloco de logos */
+    .header { display: flex; justify-content: space-between; align-items: center; background: #000000; border-radius: 8px; margin-bottom: 12px; border: 1px solid #222; padding: 12px 18px; }
     
-    .top-kpis { display: flex; gap: 12px; }
-    .top-card { background: #1f2833; padding: 10px 18px; border-radius: 6px; text-align: center; border: 1px solid #45a29e; }
-    .top-card span { display: block; font-size: 11px; color: #c5c6c7; margin-bottom: 4px; font-weight: bold; }
-    .top-card strong { font-size: 20px; color: #ffffff; }
+    .header-title-box { display: flex; align-items: center; }
+    .header-title { font-size: 22px; font-weight: 800; letter-spacing: 2px; color: #ffffff; text-transform: uppercase; }
 
-    /* Cards Centrais */
-    .grid-container { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-    .section-card { background: #121212; border-radius: 8px; padding: 20px; border: 1px solid #2a2a2a; }
-    .section-title { display: inline-block; background: #e0e0e0; color: #000; padding: 5px 18px; border-radius: 12px; font-weight: bold; font-size: 14px; margin-bottom: 15px; }
+    .kpi-top-container { display: flex; gap: 8px; }
+    .kpi-top { background: #1f2833; padding: 5px 12px; border-radius: 6px; text-align: center; border: 1px solid #45a29e; }
+    .kpi-top span { display: block; font-size: 9px; color: #c5c6c7; text-transform: uppercase; }
+    .kpi-top strong { font-size: 16px; color: #fff; }
+
+    .update-time { font-size: 10px; color: #888; text-align: right; margin-top: 3px; }
+
+    /* Grid do Dashboard */
+    .grid-container { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .section-card { background: #121212; border-radius: 8px; padding: 12px; border: 1px solid #2a2a2a; }
     
-    .kpi-row { display: flex; justify-content: space-around; text-align: center; background: #1a1a1a; padding: 15px; border-radius: 6px; }
-    .kpi-item span { display: block; font-size: 12px; color: #aaa; margin-bottom: 5px; }
-    .kpi-item strong { font-size: 22px; color: #fff; }
+    .section-title { display: inline-block; background: #e0e0e0; color: #000; padding: 3px 14px; border-radius: 12px; font-weight: bold; font-size: 12px; margin-bottom: 10px; }
+
+    /* KPIs Internos */
+    .kpi-row { display: flex; justify-content: space-between; text-align: center; margin-bottom: 8px; background: #1a1a1a; padding: 8px; border-radius: 6px; }
+    .kpi-item span { display: block; font-size: 10px; color: #aaa; }
+    .kpi-item strong { font-size: 16px; color: #fff; }
+
+    .pct-row { display: flex; justify-content: flex-end; gap: 12px; font-size: 10px; color: #45a29e; margin-bottom: 10px; }
+
+    /* Box e Legenda dos Gráficos */
+    .chart-box { background: #181818; border-radius: 8px; padding: 10px; border: 1px solid #282828; margin-top: 10px; }
+    .chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .chart-title-tag { background: #e0e0e0; color: #000; font-size: 10px; font-weight: bold; padding: 2px 8px; border-radius: 8px; }
+    .chart-legend { display: flex; gap: 10px; font-size: 10px; font-style: italic; }
+    .legend-item { display: flex; align-items: center; gap: 4px; }
+    .color-box { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+    .color-purple { background-color: #B57EDC; }
+    .color-green { background-color: #40C000; }
+    .color-blue { background-color: #3B82F6; }
+
+    .chart-container { position: relative; height: 210px; width: 100%; }
   </style>
 </head>
 <body>
 
-  <!-- CABEÇALHO -->
+  <!-- Topo Simplificado -->
   <div class="header">
-    <div class="header-title">ESTOQUE</div>
-    <div class="top-kpis">
-      <div class="top-card">
-        <span>TOTAL ESTOQUE</span>
-        <strong id="top-estoque">-</strong>
+    <div class="header-title-box">
+      <span class="header-title">ESTOQUE</span>
+    </div>
+
+    <div>
+      <div class="kpi-top-container">
+        <div class="kpi-top"><span>Total Estoque</span><strong id="top-estoque">-</strong></div>
+        <div class="kpi-top"><span>Total SKUs</span><strong id="top-skus">-</strong></div>
+        <div class="kpi-top"><span>Total Posições</span><strong id="top-posicoes">-</strong></div>
+        <div class="kpi-top"><span>Total Ocupadas</span><strong id="top-ocupadas">-</strong></div>
+        <div class="kpi-top"><span>Total Vazias</span><strong id="top-vazias">-</strong></div>
       </div>
-      <div class="top-card">
-        <span>TOTAL SKUS</span>
-        <strong id="top-skus">-</strong>
-      </div>
+      <div class="update-time">Última Atualização: <span id="top-atualizacao">-</span></div>
     </div>
   </div>
 
-  <!-- CONTEÚDO PRINCIPAL -->
+  <!-- Corpo / Seções -->
   <div class="grid-container">
+    
+    <!-- Ocupação Picking -->
     <div class="section-card">
       <div style="text-align: center;"><span class="section-title">Ocupação Picking</span></div>
+      
       <div class="kpi-row">
         <div class="kpi-item"><span>Total Peças</span><strong id="pick-pecas">-</strong></div>
         <div class="kpi-item"><span>Total SKU</span><strong id="pick-sku">-</strong></div>
+        <div class="kpi-item"><span>Capacidade</span><strong id="pick-cap">-</strong></div>
+        <div class="kpi-item"><span>Ocupadas</span><strong id="pick-ocup">-</strong></div>
+        <div class="kpi-item"><span>Vazias</span><strong id="pick-vaz">-</strong></div>
+      </div>
+
+      <div class="pct-row">
+        <span>Ocupadas %: <strong id="pick-ocup-pct">-</strong></span>
+        <span>Vazias %: <strong id="pick-vaz-pct">-</strong></span>
+      </div>
+
+      <!-- Gráfico Peças Picking -->
+      <div class="chart-box">
+        <div class="chart-header">
+          <span class="chart-title-tag">Ocupação Peças - Picking</span>
+          <div class="chart-legend">
+            <span class="legend-item"><i class="color-box color-purple"></i> Capacidade Peças</span>
+            <span class="legend-item"><i class="color-box color-green"></i> Livres</span>
+            <span class="legend-item"><i class="color-box color-blue"></i> Ocupados</span>
+          </div>
+        </div>
+        <div class="chart-container">
+          <canvas id="chartPecasPicking"></canvas>
+        </div>
+      </div>
+
+      <!-- Gráfico Posições Picking -->
+      <div class="chart-box">
+        <div class="chart-header">
+          <span class="chart-title-tag">Ocupação Posições - Picking</span>
+          <div class="chart-legend">
+            <span class="legend-item"><i class="color-box color-purple"></i> Capacidade</span>
+            <span class="legend-item"><i class="color-box color-green"></i> Livres</span>
+            <span class="legend-item"><i class="color-box color-blue"></i> Ocupados</span>
+          </div>
+        </div>
+        <div class="chart-container">
+          <canvas id="chartPosicoesPicking"></canvas>
+        </div>
       </div>
     </div>
 
+    <!-- Ocupação Pulmão -->
     <div class="section-card">
       <div style="text-align: center;"><span class="section-title">Ocupação Pulmão</span></div>
+      
       <div class="kpi-row">
         <div class="kpi-item"><span>Total Peças</span><strong id="pul-pecas">-</strong></div>
         <div class="kpi-item"><span>Total SKU</span><strong id="pul-sku">-</strong></div>
+        <div class="kpi-item"><span>Capacidade</span><strong id="pul-cap">-</strong></div>
+        <div class="kpi-item"><span>Ocupadas</span><strong id="pul-ocup">-</strong></div>
+        <div class="kpi-item"><span>Vazias</span><strong id="pul-vaz">-</strong></div>
+      </div>
+
+      <div class="pct-row">
+        <span>Ocupadas %: <strong id="pul-ocup-pct">-</strong></span>
+        <span>Vazias %: <strong id="pul-vaz-pct">-</strong></span>
+      </div>
+
+      <!-- Gráfico Peças Pulmão -->
+      <div class="chart-box">
+        <div class="chart-header">
+          <span class="chart-title-tag">Ocupação Peças - Pulmão</span>
+          <div class="chart-legend">
+            <span class="legend-item"><i class="color-box color-purple"></i> Capacidade Peças</span>
+            <span class="legend-item"><i class="color-box color-green"></i> Livres</span>
+            <span class="legend-item"><i class="color-box color-blue"></i> Ocupados</span>
+          </div>
+        </div>
+        <div class="chart-container">
+          <canvas id="chartPecasPulmao"></canvas>
+        </div>
+      </div>
+
+      <!-- Gráfico Posições Pulmão -->
+      <div class="chart-box">
+        <div class="chart-header">
+          <span class="chart-title-tag">Ocupação Posições - Pulmão</span>
+          <div class="chart-legend">
+            <span class="legend-item"><i class="color-box color-purple"></i> Capacidade</span>
+            <span class="legend-item"><i class="color-box color-green"></i> Livres</span>
+            <span class="legend-item"><i class="color-box color-blue"></i> Ocupados</span>
+          </div>
+        </div>
+        <div class="chart-container">
+          <canvas id="chartPosicoesPulmao"></canvas>
+        </div>
       </div>
     </div>
+
   </div>
 
   <script>
+    Chart.register(ChartDataLabels);
+
     function fmt(num) {
       return Number(num || 0).toLocaleString('pt-BR');
     }
 
-    async function carregarEstoque() {
+    function calcPct(parte, total) {
+      if (!total || total == 0) return '0,00%';
+      return ((parte / total) * 100).toFixed(2).replace('.', ',') + '%';
+    }
+
+    function renderizarGrafico(canvasId, labels, capacidade, ocupados, livres) {
+      const canvas = document.getElementById(canvasId);
+      if (!canvas) return;
+
+      const ctx = canvas.getContext('2d');
+
+      if (window[canvasId + '_chart']) {
+        window[canvasId + '_chart'].destroy();
+      }
+
+      window[canvasId + '_chart'] = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [
+            {
+              label: 'Capacidade',
+              data: capacidade,
+              backgroundColor: '#B57EDC',
+              stack: 'stack1',
+              barThickness: 50
+            },
+            {
+              label: 'Ocupados',
+              data: ocupados,
+              backgroundColor: '#3B82F6',
+              stack: 'stack2',
+              barThickness: 50
+            },
+            {
+              label: 'Livres',
+              data: livres,
+              backgroundColor: '#40C000',
+              stack: 'stack2',
+              barThickness: 50
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          categoryPercentage: 0.6,
+          barPercentage: 0.95,
+          plugins: {
+            legend: { display: false },
+            tooltip: { mode: 'index', intersect: false },
+            datalabels: {
+              color: '#ffffff',
+              font: { weight: 'bold', size: 10 },
+              formatter: function(value) {
+                return value > 0 ? fmt(value) : '';
+              }
+            }
+          },
+          scales: {
+            x: {
+              stacked: true,
+              ticks: { color: '#FFFFFF', font: { weight: 'bold', size: 10 } },
+              grid: { display: false }
+            },
+            y: {
+              stacked: true,
+              ticks: { color: '#888888' },
+              grid: { color: '#222222' }
+            }
+          }
+        }
+      });
+    }
+
+    async function carregarDashboard() {
       try {
-        const res = await fetch('/api/estoque');
+        const res = await fetch('/api/dashboard');
         const data = await res.json();
 
-        if (data.error) {
-          console.error('Erro retornado pela API:', data.detalhe);
-          alert('Erro no Banco de Dados: ' + data.detalhe);
-          return;
-        }
+        if (!data || data.error) return;
 
-        document.getElementById('top-estoque').innerText = fmt(data.total_estoque);
-        document.getElementById('top-skus').innerText = fmt(data.total_skus);
+        // Topo
+        document.getElementById('top-estoque').innerText = fmt(data.gerais.total_estoque);
+        document.getElementById('top-skus').innerText = fmt(data.gerais.total_skus);
+        document.getElementById('top-posicoes').innerText = fmt(data.gerais.total_posicoes);
+        document.getElementById('top-ocupadas').innerText = fmt(data.gerais.posicoes_ocupadas);
+        document.getElementById('top-vazias').innerText = fmt(data.gerais.posicoes_vazias);
+        document.getElementById('top-atualizacao').innerText = data.ultima_atualizacao || '-';
 
-        document.getElementById('pick-pecas').innerText = fmt(data.picking?.pecas);
-        document.getElementById('pick-sku').innerText = fmt(data.picking?.sku);
+        // Picking
+        document.getElementById('pick-pecas').innerText = fmt(data.picking.total_pecas);
+        document.getElementById('pick-sku').innerText = fmt(data.picking.total_skus);
+        document.getElementById('pick-cap').innerText = fmt(data.picking.capacidade);
+        document.getElementById('pick-ocup').innerText = fmt(data.picking.ocupadas);
+        document.getElementById('pick-vaz').innerText = fmt(data.picking.vazias);
+        document.getElementById('pick-ocup-pct').innerText = calcPct(data.picking.ocupadas, data.picking.capacidade);
+        document.getElementById('pick-vaz-pct').innerText = calcPct(data.picking.vazias, data.picking.capacidade);
 
-        document.getElementById('pul-pecas').innerText = fmt(data.pulmao?.pecas);
-        document.getElementById('pul-sku').innerText = fmt(data.pulmao?.sku);
+        // Pulmão
+        document.getElementById('pul-pecas').innerText = fmt(data.pulmao.total_pecas);
+        document.getElementById('pul-sku').innerText = fmt(data.pulmao.total_skus);
+        document.getElementById('pul-cap').innerText = fmt(data.pulmao.capacidade);
+        document.getElementById('pul-ocup').innerText = fmt(data.pulmao.ocupadas);
+        document.getElementById('pul-vaz').innerText = fmt(data.pulmao.vazias);
+        document.getElementById('pul-ocup-pct').innerText = calcPct(data.pulmao.ocupadas, data.pulmao.capacidade);
+        document.getElementById('pul-vaz-pct').innerText = calcPct(data.pulmao.vazias, data.pulmao.capacidade);
+
+        // Gráficos
+        const graficosData = data.graficos || [];
+        
+        // Picking
+        const pickingData = graficosData.filter(g => g.categoria && !g.categoria.includes('PP - PULMÃO'));
+        const categoriasPicking = pickingData.map(g => g.categoria);
+
+        renderizarGrafico(
+          'chartPecasPicking',
+          categoriasPicking,
+          pickingData.map(g => Number(g.pecas_capacidade || 0)),
+          pickingData.map(g => Number(g.pecas_ocupadas || 0)),
+          pickingData.map(g => Number(g.pecas_livres || 0))
+        );
+
+        renderizarGrafico(
+          'chartPosicoesPicking',
+          categoriasPicking,
+          pickingData.map(g => Number(g.posicoes_capacidade || 0)),
+          pickingData.map(g => Number(g.posicoes_ocupadas || 0)),
+          pickingData.map(g => Number(g.posicoes_livres || 0))
+        );
+
+        // Pulmão
+        const pulmaoData = graficosData.filter(g => g.categoria && g.categoria.includes('PP - PULMÃO'));
+        const categoriasPulmao = pulmaoData.map(g => g.categoria);
+
+        renderizarGrafico(
+          'chartPecasPulmao',
+          categoriasPulmao,
+          pulmaoData.map(g => Number(g.pecas_capacidade || 0)),
+          pulmaoData.map(g => Number(g.pecas_ocupadas || 0)),
+          pulmaoData.map(g => Number(g.pecas_livres || 0))
+        );
+
+        renderizarGrafico(
+          'chartPosicoesPulmao',
+          categoriasPulmao,
+          pulmaoData.map(g => Number(g.posicoes_capacidade || 0)),
+          pulmaoData.map(g => Number(g.posicoes_ocupadas || 0)),
+          pulmaoData.map(g => Number(g.posicoes_livres || 0))
+        );
 
       } catch (err) {
-        console.error('Erro ao carregar Estoque:', err);
+        console.error('Erro ao buscar dados:', err);
       }
     }
 
-    document.addEventListener('DOMContentLoaded', carregarEstoque);
+    carregarDashboard();
+    setInterval(carregarDashboard, 30000);
   </script>
 </body>
 </html>
