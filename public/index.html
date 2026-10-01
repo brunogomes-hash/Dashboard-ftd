@@ -10,12 +10,15 @@
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
     body { background-color: #0b0c10; color: #ffffff; padding: 12px; }
 
-    /* Cabeçalho que cobre 100% da altura das logos */
+    /* Cabeçalho */
     .header { display: flex; justify-content: space-between; align-items: center; background: #000000; border-radius: 8px; margin-bottom: 12px; border: 1px solid #222; overflow: hidden; padding-right: 15px; }
-    .header-branding { display: flex; align-items: center; height: 55px; }
     
-    .logo-box-luft { background-color: #0b1e42; padding: 0 22px 0 15px; display: flex; align-items: center; justify-content: center; height: 100%; }
-    .logo-box-ftd { background-color: #1e1e1e; padding: 0 22px 0 18px; display: flex; align-items: center; justify-content: center; height: 100%; border-top-right-radius: 8px; border-bottom-right-radius: 8px; }
+    .header-left { display: flex; align-items: center; height: 55px; }
+
+    /* Bloco unificado com fundo claro para destacar as imagens oficiais */
+    .header-branding { display: flex; align-items: center; background: #ffffff; height: 100%; padding: 0 15px; border-top-left-radius: 8px; border-bottom-left-radius: 8px; gap: 12px; }
+    .header-branding img.logo-luft { height: 36px; object-fit: contain; }
+    .header-branding img.logo-ftd { height: 38px; object-fit: contain; }
 
     .header-title-box { margin-left: 20px; }
     .header-title { font-size: 20px; font-weight: 800; letter-spacing: 2px; color: #ffffff; text-transform: uppercase; }
@@ -56,28 +59,13 @@
 </head>
 <body>
 
-  <!-- Topo com Bloco de Logos Cobrindo 100% da Altura -->
+  <!-- Topo com as Logos Oficiais em Imagem -->
   <div class="header">
-    <div style="display: flex; align-items: center; height: 100%;">
+    <div class="header-left">
       <div class="header-branding">
-        <!-- Logo Luft Logistics -->
-        <div class="logo-box-luft">
-          <svg height="32" viewBox="0 0 280 60" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="30" cy="30" r="26" fill="#FFFFF0"/>
-            <path d="M 12 36 L 42 14 L 32 44 Z" fill="#0b1e42"/>
-            <text x="65" y="34" font-family="'Segoe UI', Arial, sans-serif" font-weight="900" font-style="italic" font-size="30" fill="#FFFFFF">LUFT</text>
-            <text x="66" y="50" font-family="'Segoe UI', Arial, sans-serif" font-weight="800" font-style="italic" font-size="13" fill="#FFFFFF" letter-spacing="3.5">LOGISTICS</text>
-          </svg>
-        </div>
-        <!-- Logo FTD Educação -->
-        <div class="logo-box-ftd">
-          <svg height="32" viewBox="0 0 160 60" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <text x="0" y="36" font-family="'Segoe UI', Arial, sans-serif" font-weight="900" font-size="38" fill="#FFFFFF">FT</text>
-            <path d="M 52 10 L 68 25 L 52 40 L 60 40 L 76 25 L 60 10 Z" fill="#FFFFFF"/>
-            <path d="M 66 10 L 82 25 L 66 40 L 74 40 L 90 25 L 74 10 Z" fill="#FFFFFF"/>
-            <text x="0" y="52" font-family="'Segoe UI', Arial, sans-serif" font-weight="700" font-size="14" fill="#FFFFFF" letter-spacing="1">educação</text>
-          </svg>
-        </div>
+        <img src="https://frenet.com.br/wp-content/uploads/2025/10/luft-transportes.png" alt="Luft Logistics" class="logo-luft">
+        <div style="width: 1px; height: 28px; background-color: #ddd;"></div>
+        <img src="https://s2.glbimg.com/ETZ0JFyBKpiBburwydVfjZFBnWY=/620x350/e.glbimg.com/og/ed/f/original/2018/12/22/ftd.jpg" alt="FTD Educação" class="logo-ftd">
       </div>
       <div class="header-title-box">
         <span class="header-title">ESTOQUE</span>
@@ -229,7 +217,7 @@
               data: capacidade,
               backgroundColor: '#B57EDC',
               stack: 'stack1',
-              barThickness: 50 // Espessura larga e encorpada para as barras
+              barThickness: 50
             },
             {
               label: 'Ocupados',
@@ -250,7 +238,7 @@
         options: {
           responsive: true,
           maintainAspectRatio: false,
-          categoryPercentage: 0.6, // Aproxima o par roxo de azul/verde mantendo boa largura
+          categoryPercentage: 0.6,
           barPercentage: 0.95,
           plugins: {
             legend: { display: false },
