@@ -60,10 +60,12 @@ app.get('/api/dashboard', async (req, res) => {
       ultima_atualizacao: new Date().toLocaleString('pt-BR')
     });
   } catch (err) {
-    console.error('Erro na consulta ao banco:', err);
-    res.status(500).json({ error: 'Erro ao carregar dados do banco de dados' });
+    console.error('Erro na consulta:', err);
+    res.status(500).json({ 
+      error: 'Erro na consulta do banco', 
+      detalhe: err.message 
+    });
   }
-});
 
 // ✅ Código correto para Express v5:
 app.get('/{*splat}', (req, res) => {
