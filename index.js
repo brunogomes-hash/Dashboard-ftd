@@ -106,44 +106,87 @@ app.get('/api/dashboard', async (req, res) => {
   }
 });
 
-// ROUTE 2: OUTBOUND GERAL (LAYOUT COMPLETO)
+// ROUTE 2: OUTBOUND GERAL (COM FILTRO DE DATAS AJUSTADO COM HORA)
 app.get('/api/outbound', async (req, res) => {
   try {
-    const kpis = await pool.query(`
+    const { data_inicio, data_fim } = req.query;
+
+    // Se não passar datas no parâmetro, usa o mês atual como padrão
+    let dtInicio, dtFim;
+    if (data_inicio && data_fim) {
+      dtInicio = `${data_inicio} 00:00:00`;
+      dtFim = `${data_fim} 23:59:59`;
+    } else {
+      const hoje = new Date();
+      const ano = hoje.getFullYear();
+      const mes = String(hoje.getMonth() + 1).padStart(2, '0');
+      const ultimoDia = new Date(ano, hoje.getMonth() + 1, 0).getDate();
+      dtInicio = `${ano}-${mes}-01 00:00:00`;
+      dtFim = `${ano}-${mes}-${String(ultimoDia).padStart(2, '0')} 23:59:59`;
+    }
+
+    // 1. Integradas e Em Tratativa (Filtro via importado_em)
+    const kpisImportados = await pool.query(`
       SELECT 
         COALESCE(SUM("quantidade"), 0) AS total_integradas,
         COUNT(DISTINCT "pedido_de_venda") AS pedidos_integrados,
-        
-        COALESCE(SUM(CASE WHEN "coletado_em" IS NOT NULL THEN "quantidade" ELSE 0 END), 0) AS total_expedidas,
-        COUNT(DISTINCT CASE WHEN "coletado_em" IS NOT NULL THEN "pedido_de_venda" END) AS pedidos_expedidos,
-
-        COALESCE(SUM(CASE WHEN "processado_em" IS NOT NULL THEN "quantidade" ELSE 0 END), 0) AS total_produzidas,
-        COUNT(DISTINCT CASE WHEN "processado_em" IS NOT NULL THEN "pedido_de_venda" END) AS pedidos_produzidos,
-
         COALESCE(SUM(CASE WHEN "status_da_nota_fiscal" ILIKE '%RETENÇÃO%' THEN "quantidade" ELSE 0 END), 0) AS total_tratativa,
         COUNT(DISTINCT CASE WHEN "status_da_nota_fiscal" ILIKE '%RETENÇÃO%' THEN "pedido_de_venda" END) AS pedidos_tratativa
       FROM "itens"
-    `);
+      WHERE "importado_em" >= $1::timestamp AND "importado_em" <= $2::timestamp
+    `, [dtInicio, dtFim]);
 
-    const r = kpis.rows[0] || {};
+    // 2. Produzidas (Filtro via conferido_em)
+    const kpisProduzidos = await pool.query(`
+      SELECT 
+        COALESCE(SUM("quantidade"), 0) AS total_produzidas,
+        COUNT(DISTINCT "pedido_de_venda") AS pedidos_produzidos
+      FROM "itens"
+      WHERE "conferido_em" >= $1::timestamp AND "conferido_em" <= $2::timestamp
+    `, [dtInicio, dtFim]);
+
+    // 3. Expedidas (Filtro via pesado_em)
+    const kpisExpedidos = await pool.query(`
+      SELECT 
+        COALESCE(SUM("quantidade"), 0) AS total_expedidas,
+        COUNT(DISTINCT "pedido_de_venda") AS pedidos_expedidos
+      FROM "itens"
+      WHERE "pesado_em" >= $1::timestamp AND "pesado_em" <= $2::timestamp
+    `, [dtInicio, dtFim]);
+
+    // 4. Gráfico de Peças Integradas por Data
+    const graficoIntegradas = await pool.query(`
+      SELECT 
+        DATE("importado_em") AS data,
+        COALESCE(SUM("quantidade"), 0) AS total_pecas
+      FROM "itens"
+      WHERE "importado_em" >= $1::timestamp AND "importado_em" <= $2::timestamp
+      GROUP BY DATE("importado_em")
+      ORDER BY DATE("importado_em") ASC
+    `, [dtInicio, dtFim]);
+
+    const imp = kpisImportados.rows[0] || {};
+    const prod = kpisProduzidos.rows[0] || {};
+    const exp = kpisExpedidos.rows[0] || {};
 
     res.json({
       forecast_pecas: 0,
-      pecas_integradas: Number(r.total_integradas || 0),
-      pedidos_integradas: Number(r.pedidos_integrados || 0),
+      pecas_integradas: Number(imp.total_integradas || 0),
+      pedidos_integradas: Number(imp.pedidos_integrados || 0),
       pecas_fluxo: 0,
       pedidos_fluxo: 0,
       em_coleta: 0,
       pedidos_coleta: 0,
-      em_tratativa: Number(r.total_tratativa || 0),
-      pedidos_tratativa: Number(r.pedidos_tratativa || 0),
-      pecas_produzidas: Number(r.total_produzidas || 0),
-      pedidos_produzidas: Number(r.pedidos_produzidos || 0),
-      pecas_expedidas: Number(r.total_expedidas || 0),
-      pedidos_expedidas: Number(r.pedidos_expedidos || 0),
-      sla_pct: 100.0,
-      integrado_vs_fcst: 0.0,
-      produzido_vs_fcst: 0.0,
+      em_tratativa: Number(imp.total_tratativa || 0),
+      pedidos_tratativa: Number(imp.pedidos_tratativa || 0),
+      pecas_produzidas: Number(prod.total_produzidas || 0),
+      pedidos_produzidas: Number(prod.pedidos_produzidos || 0),
+      pecas_expedidas: Number(exp.total_expedidas || 0),
+      pedidos_expedidas: Number(exp.pedidos_expedidos || 0),
+      pecas_integradas_grafico: graficoIntegradas.rows || [],
+      sla_pct: '100,00%',
+      integrado_vs_fcst: '0,00%',
+      produzido_vs_fcst: '0,00%',
       ultima_atualizacao: new Date().toLocaleString('pt-BR')
     });
   } catch (err) {
@@ -152,7 +195,7 @@ app.get('/api/outbound', async (req, res) => {
   }
 });
 
-app.get('/{*splat}', (req, res) => {
+app.get('/*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
