@@ -106,12 +106,11 @@ app.get('/api/dashboard', async (req, res) => {
   }
 });
 
-// ROUTE 2: OUTBOUND GERAL (COM FILTRO DE DATAS AJUSTADO COM HORA)
+// ROUTE 2: OUTBOUND GERAL (COM FILTRO DE DATAS E STATUS EM FLUXO)
 app.get('/api/outbound', async (req, res) => {
   try {
     const { data_inicio, data_fim } = req.query;
 
-    // Se não passar datas no parâmetro, usa o mês atual como padrão
     let dtInicio, dtFim;
     if (data_inicio && data_fim) {
       dtInicio = `${data_inicio} 00:00:00`;
@@ -125,33 +124,61 @@ app.get('/api/outbound', async (req, res) => {
       dtFim = `${ano}-${mes}-${String(ultimoDia).padStart(2, '0')} 23:59:59`;
     }
 
-    // 1. Integradas e Em Tratativa (Filtro via importado_em)
+    // 1. Integradas, Tratativa e EM FLUXO (via importado_em)
     const kpisImportados = await pool.query(`
       SELECT 
+        -- Total Integradas
         COALESCE(SUM("quantidade"), 0) AS total_integradas,
         COUNT(DISTINCT "pedido_de_venda") AS pedidos_integrados,
+        
+        -- Em Tratativa (Status da Nota Fiscal contém RETENÇÃO)
         COALESCE(SUM(CASE WHEN "status_da_nota_fiscal" ILIKE '%RETENÇÃO%' THEN "quantidade" ELSE 0 END), 0) AS total_tratativa,
-        COUNT(DISTINCT CASE WHEN "status_da_nota_fiscal" ILIKE '%RETENÇÃO%' THEN "pedido_de_venda" END) AS pedidos_tratativa
+        COUNT(DISTINCT CASE WHEN "status_da_nota_fiscal" ILIKE '%RETENÇÃO%' THEN "pedido_de_venda" END) AS pedidos_tratativa,
+
+        -- EM FLUXO (Busca flexível usando ILIKE e TRIM para ignorar diferenças de caixa/espaços)
+        COALESCE(SUM(
+          CASE WHEN TRIM(LOWER("status_operacional")) IN (
+            'importado',
+            'aguardando separação',
+            'aguardando formar onda',
+            'em separação',
+            'em conferência'
+          ) THEN "quantidade" ELSE 0 END
+        ), 0) AS total_fluxo,
+        
+        COUNT(DISTINCT 
+          CASE WHEN TRIM(LOWER("status_operacional")) IN (
+            'importado',
+            'aguardando separação',
+            'aguardando formar onda',
+            'em separação',
+            'em conferência'
+          ) THEN "pedido_de_venda" END
+        ) AS pedidos_fluxo
+
       FROM "itens"
-      WHERE "importado_em" >= $1::timestamp AND "importado_em" <= $2::timestamp
+      WHERE "importado_em"::timestamp >= $1::timestamp 
+        AND "importado_em"::timestamp <= $2::timestamp
     `, [dtInicio, dtFim]);
 
-    // 2. Produzidas (Filtro via conferido_em)
+    // 2. Produzidas (via conferido_em)
     const kpisProduzidos = await pool.query(`
       SELECT 
         COALESCE(SUM("quantidade"), 0) AS total_produzidas,
         COUNT(DISTINCT "pedido_de_venda") AS pedidos_produzidos
       FROM "itens"
-      WHERE "conferido_em" >= $1::timestamp AND "conferido_em" <= $2::timestamp
+      WHERE "conferido_em"::timestamp >= $1::timestamp 
+        AND "conferido_em"::timestamp <= $2::timestamp
     `, [dtInicio, dtFim]);
 
-    // 3. Expedidas (Filtro via pesado_em)
+    // 3. Expedidas (via pesado_em)
     const kpisExpedidos = await pool.query(`
       SELECT 
         COALESCE(SUM("quantidade"), 0) AS total_expedidas,
         COUNT(DISTINCT "pedido_de_venda") AS pedidos_expedidos
       FROM "itens"
-      WHERE "pesado_em" >= $1::timestamp AND "pesado_em" <= $2::timestamp
+      WHERE "pesado_em"::timestamp >= $1::timestamp 
+        AND "pesado_em"::timestamp <= $2::timestamp
     `, [dtInicio, dtFim]);
 
     // 4. Gráfico de Peças Integradas por Data
@@ -160,7 +187,8 @@ app.get('/api/outbound', async (req, res) => {
         DATE("importado_em") AS data,
         COALESCE(SUM("quantidade"), 0) AS total_pecas
       FROM "itens"
-      WHERE "importado_em" >= $1::timestamp AND "importado_em" <= $2::timestamp
+      WHERE "importado_em"::timestamp >= $1::timestamp 
+        AND "importado_em"::timestamp <= $2::timestamp
       GROUP BY DATE("importado_em")
       ORDER BY DATE("importado_em") ASC
     `, [dtInicio, dtFim]);
@@ -173,16 +201,23 @@ app.get('/api/outbound', async (req, res) => {
       forecast_pecas: 0,
       pecas_integradas: Number(imp.total_integradas || 0),
       pedidos_integradas: Number(imp.pedidos_integrados || 0),
-      pecas_fluxo: 0,
-      pedidos_fluxo: 0,
+      
+      // Métrica ajustada para Em Fluxo
+      pecas_fluxo: Number(imp.total_fluxo || 0),
+      pedidos_fluxo: Number(imp.pedidos_fluxo || 0),
+      
       em_coleta: 0,
       pedidos_coleta: 0,
+      
       em_tratativa: Number(imp.total_tratativa || 0),
       pedidos_tratativa: Number(imp.pedidos_tratativa || 0),
+      
       pecas_produzidas: Number(prod.total_produzidas || 0),
       pedidos_produzidas: Number(prod.pedidos_produzidos || 0),
+      
       pecas_expedidas: Number(exp.total_expedidas || 0),
       pedidos_expedidas: Number(exp.pedidos_expedidos || 0),
+      
       pecas_integradas_grafico: graficoIntegradas.rows || [],
       sla_pct: '100,00%',
       integrado_vs_fcst: '0,00%',
