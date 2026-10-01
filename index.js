@@ -15,7 +15,7 @@ const pool = new Pool({
 
 app.get('/api/dashboard', async (req, res) => {
   try {
-    // 1. Total Peças e SKUs vindo da tabela estoque (ORIGINAL INTACTO)
+    // 1. Total Peças e SKUs vindo da tabela estoque
     const pecasEstoque = await pool.query(`
       SELECT 
         COALESCE(SUM("disponível"), 0) AS total_estoque,
@@ -29,7 +29,7 @@ app.get('/api/dashboard', async (req, res) => {
       return { rows: [{ total_estoque: 0, total_skus: 0 }] };
     });
 
-    // 2. SKUs e Peças por Tipo (Picking x Pulmão) da tabela estoque (ORIGINAL INTACTO)
+    // 2. SKUs e Peças por Tipo (Picking x Pulmão) da tabela estoque
     const pickingPecas = await pool.query(`
       SELECT 
         COALESCE(SUM("disponível"), 0) AS total_pecas,
@@ -52,7 +52,7 @@ app.get('/api/dashboard', async (req, res) => {
         AND ("tipo_do_local" ILIKE '%PULMÃO%' OR "tipo_do_local" ILIKE '%PULMAO%')
     `).catch(err => ({ rows: [{ total_pecas: 0, total_skus: 0 }] }));
 
-    // 3. Tabela de Capacidade (Gráficos e Totais do Resumo - ORIGINAL INTACTO)
+    // 3. Tabela de Capacidade (Gráficos e Totais do Resumo)
     const graficos = await pool.query(`
       SELECT 
         categoria_estrutura AS categoria,
@@ -73,30 +73,20 @@ app.get('/api/dashboard', async (req, res) => {
         END
     `).catch(err => ({ rows: [] }));
 
-    // 4. NOVO: Consulta paralela para a tabela de itens
-    const dadosItens = await pool.query(`
-      SELECT 
-        COALESCE(COUNT(DISTINCT "sku"), COUNT(DISTINCT "codigo"), 0) AS total_itens
-      FROM "itens"
-    `).catch(err => {
-      console.error("Erro ao consultar tabela itens:", err.message);
-      return { rows: [{ total_itens: 0 }] };
-    });
-
     const rowsCapacidade = graficos.rows || [];
 
-    // Soma Total do Armazém
+    // Soma Total do Armazém (Consolidado do Gráfico)
     const totalPosicoesGeral = rowsCapacidade.reduce((acc, r) => acc + Number(r.posicoes_capacidade || 0), 0);
     const totalOcupadasGeral = rowsCapacidade.reduce((acc, r) => acc + Number(r.posicoes_ocupadas || 0), 0);
     const totalVaziasGeral = rowsCapacidade.reduce((acc, r) => acc + Number(r.posicoes_livres || 0), 0);
 
-    // Soma Picking
+    // Soma Picking (Categorias PR - PRATELEIRA, PQ - BLOCADO e PP - PICKING)
     const pickingRows = rowsCapacidade.filter(r => r.categoria && !r.categoria.includes('PP - PULMÃO'));
     const pickingCapacidade = pickingRows.reduce((acc, r) => acc + Number(r.posicoes_capacidade || 0), 0);
     const pickingOcupadas = pickingRows.reduce((acc, r) => acc + Number(r.posicoes_ocupadas || 0), 0);
     const pickingVazias = pickingRows.reduce((acc, r) => acc + Number(r.posicoes_livres || 0), 0);
 
-    // Soma Pulmão
+    // Soma Pulmão (Categoria PP - PULMÃO)
     const pulmaoRows = rowsCapacidade.filter(r => r.categoria && r.categoria.includes('PP - PULMÃO'));
     const pulmaoCapacidade = pulmaoRows.reduce((acc, r) => acc + Number(r.posicoes_capacidade || 0), 0);
     const pulmaoOcupadas = pulmaoRows.reduce((acc, r) => acc + Number(r.posicoes_ocupadas || 0), 0);
@@ -108,8 +98,7 @@ app.get('/api/dashboard', async (req, res) => {
         total_skus: pecasEstoque.rows[0]?.total_skus || 0,
         total_posicoes: totalPosicoesGeral,
         posicoes_ocupadas: totalOcupadasGeral,
-        posicoes_vazias: totalVaziasGeral,
-        total_itens: dadosItens.rows[0]?.total_itens || 0
+        posicoes_vazias: totalVaziasGeral
       },
       picking: {
         total_pecas: pickingPecas.rows[0]?.total_pecas || 0,
