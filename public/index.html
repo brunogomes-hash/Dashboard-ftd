@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard de Estoque - LFT / FTD</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    body { background-color: #0b0c10; color: #ffffff; padding: 15px; }
+
+    /* Cabeçalho */
+    .header { display: flex; justify-content: space-between; align-items: center; background: #000000; padding: 10px 20px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #222; }
+    .logo-title { display: flex; align-items: center; gap: 15px; }
+    .logo-title h2 { font-size: 22px; letter-spacing: 1px; color: #fff; }
+    .kpi-top-container { display: flex; gap: 10px; }
+    .kpi-top { background: #1f2833; padding: 6px 15px; border-radius: 6px; text-align: center; border: 1px solid #45a29e; }
+    .kpi-top span { display: block; font-size: 10px; color: #c5c6c7; text-transform: uppercase; }
+    .kpi-top strong { font-size: 18px; color: #fff; }
+
+    .update-time { font-size: 11px; color: #888; text-align: right; margin-top: 4px; }
+
+    /* Grid do Dashboard */
+    .grid-container { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+    .section-card { background: #121212; border-radius: 8px; padding: 15px; border: 1px solid #2a2a2a; }
+    
+    .section-title { display: inline-block; background: #e0e0e0; color: #000; padding: 4px 15px; border-radius: 12px; font-weight: bold; font-size: 13px; margin-bottom: 15px; }
+
+    /* KPIs Internos */
+    .kpi-row { display: flex; justify-content: space-between; text-align: center; margin-bottom: 15px; background: #1a1a1a; padding: 10px; border-radius: 6px; }
+    .kpi-item span { display: block; font-size: 11px; color: #aaa; }
+    .kpi-item strong { font-size: 18px; color: #fff; }
+
+    .pct-row { display: flex; justify-content: flex-end; gap: 15px; font-size: 11px; color: #45a29e; margin-bottom: 15px; }
+
+    /* Áreas de Gráfico / Visualização */
+    .chart-placeholder { height: 180px; background: #181818; border-radius: 6px; border: 1px dashed #333; display: flex; align-items: center; justify-content: center; color: #666; font-size: 13px; margin-top: 10px; }
+  </style>
+</head>
+<body>
+
+  <!-- Topo -->
+  <div class="header">
+    <div class="logo-title">
+      <h2>ESTOQUE</h2>
+    </div>
+    <div>
+      <div class="kpi-top-container">
+        <div class="kpi-top"><span>Total Estoque</span><strong id="top-estoque">-</strong></div>
+        <div class="kpi-top"><span>Total SKUs</span><strong id="top-skus">-</strong></div>
+        <div class="kpi-top"><span>Total Posições</span><strong id="top-posicoes">-</strong></div>
+        <div class="kpi-top"><span>Total Ocupadas</span><strong id="top-ocupadas">-</strong></div>
+        <div class="kpi-top"><span>Total Vazias</span><strong id="top-vazias">-</strong></div>
+      </div>
+      <div class="update-time">Última Atualização: <span id="top-atualizacao">-</span></div>
+    </div>
+  </div>
+
+  <!-- Corpo / Seções -->
+  <div class="grid-container">
+    
+    <!-- Ocupação Picking -->
+    <div class="section-card">
+      <div style="text-align: center;"><span class="section-title">Ocupação Picking</span></div>
+      
+      <div class="kpi-row">
+        <div class="kpi-item"><span>Total Peças</span><strong id="pick-pecas">-</strong></div>
+        <div class="kpi-item"><span>Total SKU</span><strong id="pick-sku">-</strong></div>
+        <div class="kpi-item"><span>Capacidade</span><strong id="pick-cap">-</strong></div>
+        <div class="kpi-item"><span>Ocupadas</span><strong id="pick-ocup">-</strong></div>
+        <div class="kpi-item"><span>Vazias</span><strong id="pick-vaz">-</strong></div>
+      </div>
+
+      <div class="pct-row">
+        <span>Ocupadas %: <strong id="pick-ocup-pct">-</strong></span>
+        <span>Vazias %: <strong id="pick-vaz-pct">-</strong></span>
+      </div>
+
+      <div class="chart-placeholder">Gráfico Ocupação Peças - Picking</div>
+      <div class="chart-placeholder">Gráfico Ocupação Posições - Picking</div>
+    </div>
+
+    <!-- Ocupação Pulmão -->
+    <div class="section-card">
+      <div style="text-align: center;"><span class="section-title">Ocupação Pulmão</span></div>
+      
+      <div class="kpi-row">
+        <div class="kpi-item"><span>Total Peças</span><strong id="pul-pecas">-</strong></div>
+        <div class="kpi-item"><span>Total SKU</span><strong id="pul-sku">-</strong></div>
+        <div class="kpi-item"><span>Capacidade</span><strong id="pul-cap">-</strong></div>
+        <div class="kpi-item"><span>Ocupadas</span><strong id="pul-ocup">-</strong></div>
+        <div class="kpi-item"><span>Vazias</span><strong id="pul-vaz">-</strong></div>
+      </div>
+
+      <div class="pct-row">
+        <span>Ocupadas %: <strong id="pul-ocup-pct">-</strong></span>
+        <span>Vazias %: <strong id="pul-vaz-pct">-</strong></span>
+      </div>
+
+      <div class="chart-placeholder">Gráfico Ocupação Peças - Pulmão</div>
+      <div class="chart-placeholder">Gráfico Ocupação Posições - Pulmão</div>
+    </div>
+
+  </div>
+
+  <script>
+    function fmt(num) {
+      return Number(num || 0).toLocaleString('pt-BR');
+    }
+
+    function calcPct(parte, total) {
+      if (!total || total == 0) return '0,00%';
+      return ((parte / total) * 100).toFixed(2).replace('.', ',') + '%';
+    }
+
+    async function carregarDashboard() {
+      try {
+        const res = await fetch('/api/dashboard');
+        const data = await res.json();
+
+        // Topo
+        document.getElementById('top-estoque').innerText = fmt(data.gerais.total_estoque);
+        document.getElementById('top-skus').innerText = fmt(data.gerais.total_skus);
+        document.getElementById('top-posicoes').innerText = fmt(data.gerais.total_posicoes);
+        document.getElementById('top-ocupadas').innerText = fmt(data.gerais.posicoes_ocupadas);
+        document.getElementById('top-vazias').innerText = fmt(data.gerais.posicoes_vazias);
+        document.getElementById('top-atualizacao').innerText = data.ultima_atualizacao;
+
+        // Picking
+        document.getElementById('pick-pecas').innerText = fmt(data.picking.total_pecas);
+        document.getElementById('pick-sku').innerText = fmt(data.picking.total_skus);
+        document.getElementById('pick-cap').innerText = fmt(data.picking.capacidade);
+        document.getElementById('pick-ocup').innerText = fmt(data.picking.ocupadas);
+        document.getElementById('pick-vaz').innerText = fmt(data.picking.vazias);
+        document.getElementById('pick-ocup-pct').innerText = calcPct(data.picking.ocupadas, data.picking.capacidade);
+        document.getElementById('pick-vaz-pct').innerText = calcPct(data.picking.vazias, data.picking.capacidade);
+
+        // Pulmão
+        document.getElementById('pul-pecas').innerText = fmt(data.pulmao.total_pecas);
+        document.getElementById('pul-sku').innerText = fmt(data.pulmao.total_skus);
+        document.getElementById('pul-cap').innerText = fmt(data.pulmao.capacidade);
+        document.getElementById('pul-ocup').innerText = fmt(data.pulmao.ocupadas);
+        document.getElementById('pul-vaz').innerText = fmt(data.pulmao.vazias);
+        document.getElementById('pul-ocup-pct').innerText = calcPct(data.pulmao.ocupadas, data.pulmao.capacidade);
+        document.getElementById('pul-vaz-pct').innerText = calcPct(data.pulmao.vazias, data.pulmao.capacidade);
+
+      } catch (err) {
+        console.error('Erro ao buscar dados:', err);
+      }
+    }
+
+    carregarDashboard();
+    // Atualiza os dados a cada 30 segundos
+    setInterval(carregarDashboard, 30000);
+  </script>
+</body>
+</html>
