@@ -19,7 +19,7 @@
     .tab-content { display: none; }
     .tab-content.active { display: block; }
 
-    /* ESTILOS DA ABA ESTOQUE */
+    /* ABA ESTOQUE */
     .header { display: flex; justify-content: space-between; align-items: center; background: #000000; border-radius: 8px; margin-bottom: 12px; border: 1px solid #222; padding: 12px 18px; }
     .header-title { font-size: 22px; font-weight: 800; letter-spacing: 2px; color: #ffffff; text-transform: uppercase; }
 
@@ -53,13 +53,12 @@
 
     .chart-container { position: relative; height: 210px; width: 100%; }
 
-    /* ESTILOS DA ABA OUTBOUND */
+    /* ABA OUTBOUND */
     .outbound-header { display: flex; align-items: center; justify-content: space-between; background: #000; padding: 6px 12px; border-radius: 6px; margin-bottom: 8px; border: 1px solid #222; }
     .logos-box { display: flex; align-items: center; gap: 8px; }
     .logo-badge { background: #1a2a3a; color: #fff; font-weight: 900; padding: 6px 12px; border-radius: 4px; font-size: 16px; font-style: italic; }
     .logo-sub { background: #fff; color: #000; font-weight: bold; padding: 4px 8px; border-radius: 4px; font-size: 12px; margin-right: 6px; }
     
-    /* CARDS DE HEADER (SLA, INTEGRADO X FCST, PRODUZIDO X FCST) */
     .header-kpis-group { display: flex; align-items: center; gap: 6px; }
     .header-kpi-card { border: 1px solid #ffffff; padding: 4px 10px; border-radius: 4px; text-align: center; background: #000; min-width: 85px; }
     .header-kpi-card span { font-size: 9px; display: block; color: #ccc; white-space: nowrap; }
@@ -67,27 +66,22 @@
 
     .main-title-outbound { font-size: 22px; font-weight: 900; letter-spacing: 2px; }
 
-    /* FILTRO DE DATA SEM HORA */
     .date-filter-box { background: #1c1c1c; border: 1px solid #333; padding: 4px 10px; border-radius: 6px; display: flex; align-items: center; gap: 6px; font-size: 11px; color: #aaa; }
     .date-input { background: #000; color: #fff; border: 1px solid #444; border-radius: 4px; padding: 3px 6px; font-size: 11px; outline: none; cursor: pointer; }
     .date-input::-webkit-calendar-picker-indicator { filter: invert(1); cursor: pointer; }
 
-    /* KPI Cards Topo Outbound */
     .top-kpis-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-bottom: 8px; }
     .kpi-card-outbound { background: #181818; border: 1px solid #2a2a2a; border-radius: 6px; padding: 10px; height: 80px; display: flex; flex-direction: column; justify-content: space-between; }
     .kpi-card-outbound .title { font-size: 12px; font-weight: bold; color: #e0e0e0; }
     .kpi-card-outbound .value-main { font-size: 15px; font-weight: bold; color: #45a29e; }
     .kpi-card-outbound .sub { font-size: 10px; color: #aaa; }
 
-    /* Layout do Corpo Outbound */
     .outbound-body-grid { display: grid; grid-template-columns: 1fr 300px; gap: 8px; }
-
     .center-charts { display: flex; flex-direction: column; gap: 8px; }
     .chart-panel { background: #181818; border: 1px solid #2a2a2a; border-radius: 6px; padding: 8px; height: 180px; position: relative; }
     .chart-panel-tag { position: absolute; top: 8px; left: 8px; background: #eaeaea; color: #000; font-size: 10px; font-weight: bold; padding: 2px 8px; border-radius: 10px; z-index: 2; }
 
     .right-chart { background: #181818; border: 1px solid #2a2a2a; border-radius: 6px; padding: 8px; position: relative; height: 556px; }
-
     .empty-chart-icon { display: flex; align-items: center; justify-content: center; height: 100%; color: #444; font-size: 32px; }
     .chart-container-outbound { position: relative; height: 100%; width: 100%; padding-top: 18px; }
   </style>
@@ -120,7 +114,6 @@
     </div>
 
     <div class="grid-container">
-      <!-- Picking -->
       <div class="section-card">
         <div style="text-align: center;"><span class="section-title">Ocupação Picking</span></div>
         <div class="kpi-row">
@@ -158,7 +151,6 @@
         </div>
       </div>
 
-      <!-- Pulmão -->
       <div class="section-card">
         <div style="text-align: center;"><span class="section-title">Ocupação Pulmão</span></div>
         <div class="kpi-row">
@@ -205,26 +197,24 @@
         <div class="logo-badge">LUFT LOGISTICS</div>
         <div class="logo-sub">FTD educação</div>
         
-        <!-- KPIs REUNIDOS NO CABEÇALHO -->
         <div class="header-kpis-group">
           <div class="header-kpi-card">
             <span>% SLA</span>
             <strong id="out-sla">100,00%</strong>
           </div>
           <div class="header-kpi-card">
-            <span>Intregado x Fcst</span>
+            <span>Integrado x Fcst</span>
             <strong id="integ-vs-fcst">0,00%</strong>
           </div>
           <div class="header-kpi-card">
             <span>Produzido x Fcst</span>
-            <strong id="prod-vs-fcst">1,14%</strong>
+            <strong id="prod-vs-fcst">0,00%</strong>
           </div>
         </div>
       </div>
 
       <div class="main-title-outbound">OUTBOUND GERAL</div>
 
-      <!-- SELETOR DE DATA FILTRANDO SOMENTE YYYY-MM-DD (SEM HORA) -->
       <div class="date-filter-box">
         <span>Filtrar Data:</span>
         <input type="date" id="data-inicio" class="date-input" onchange="carregarOutbound()">
@@ -233,7 +223,7 @@
       </div>
     </div>
 
-    <!-- Cards KPI Superiores -->
+    <!-- Cards KPI Topo -->
     <div class="top-kpis-grid">
       <div class="kpi-card-outbound">
         <div class="title">Forecast Peças</div>
@@ -272,7 +262,7 @@
       </div>
     </div>
 
-    <!-- Grid do Corpo Outbound -->
+    <!-- Layout do Corpo Outbound -->
     <div class="outbound-body-grid">
       <div class="center-charts">
         <div class="chart-panel">
@@ -430,7 +420,7 @@
         const categoriasPulmao = pulmaoData.map(g => g.categoria);
 
         renderizarGrafico('chartPecasPulmao', categoriasPulmao, pulmaoData.map(g => Number(g.pecas_capacidade || 0)), pulmaoData.map(g => Number(g.pecas_ocupadas || 0)), pulmaoData.map(g => Number(g.pecas_livres || 0)));
-        renderizarGrafico('chartPosicoesPulmao', categoriasPulmao, pulmaoData.map(g => Number(g.posicoes_capacidade || 0)), pulmaoData.map(g => Number(g.posicoes_ocupadas || 0)), pulmaoData.map(g => Number(g.posicoes_livres || 0)));
+        renderizarGrafico('chartPosicoesPulmao', categoriasPulmao, pulmaoData.map(g => Number(g.posicoes_capacidade || 0)), pulmaoData.map(g => Number(g.posicoes_livres || 0)));
       } catch (err) {
         console.error('Erro ao carregar estoque:', err);
       }
@@ -452,7 +442,7 @@
         if (data.integrado_vs_fcst) document.getElementById('integ-vs-fcst').innerText = data.integrado_vs_fcst;
         if (data.produzido_vs_fcst) document.getElementById('prod-vs-fcst').innerText = data.produzido_vs_fcst;
 
-        // Valores das Peças (Número grande)
+        // Valores de Peças
         document.getElementById('fcst-val').innerText   = fmt(data.forecast_pecas);
         document.getElementById('integ-val').innerText  = fmt(data.pecas_integradas);
         document.getElementById('fluxo-val').innerText  = fmt(data.pecas_fluxo);
@@ -461,7 +451,7 @@
         document.getElementById('prod-val').innerText   = fmt(data.pecas_produzidas);
         document.getElementById('exp-val').innerText    = fmt(data.pecas_expedidas);
 
-        // Subtítulos dos Pedidos
+        // Subtítulos de Pedidos
         document.getElementById('integ-ped').innerText  = fmt(data.pedidos_integradas);
         document.getElementById('fluxo-ped').innerText  = fmt(data.pedidos_fluxo);
         document.getElementById('coleta-ped').innerText = fmt(data.pedidos_coleta);
