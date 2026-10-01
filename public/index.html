@@ -22,15 +22,13 @@
     /* Estilo Geral de Cabeçalho */
     .header { display: flex; justify-content: space-between; align-items: center; background: #000000; border-radius: 8px; margin-bottom: 12px; border: 1px solid #222; padding: 10px 15px; }
     
-    /* Topo Outbound Especifico Reorganizado */
-    .header-outbound { display: flex; justify-content: space-between; align-items: center; gap: 15px; }
+    /* Topo Outbound Especifico */
+    .header-outbound { display: grid; grid-template-columns: auto 180px 1fr auto; align-items: center; gap: 15px; }
+    .sla-box { border: 1px solid #555; border-radius: 6px; text-align: center; padding: 4px 10px; background: #080808; }
+    .sla-box span { font-size: 11px; color: #aaa; text-transform: uppercase; font-weight: bold; }
+    .sla-box strong { display: block; font-size: 22px; color: #fff; font-weight: 800; }
     
-    .sla-group { display: flex; gap: 10px; align-items: center; }
-    .sla-box { border: 1px solid #555; border-radius: 6px; text-align: center; padding: 4px 10px; background: #080808; min-width: 100px; }
-    .sla-box span { font-size: 10px; color: #aaa; text-transform: uppercase; font-weight: bold; display: block; }
-    .sla-box strong { font-size: 18px; color: #fff; font-weight: 800; display: block; }
-    
-    .outbound-title { font-size: 24px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase; text-align: center; }
+    .outbound-title { font-size: 26px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase; text-align: center; }
     .date-picker-box { background: #1a1a1a; border: 1px solid #333; padding: 6px 12px; border-radius: 6px; font-size: 12px; color: #ccc; }
 
     /* KPIs Outbound Topo */
@@ -40,8 +38,14 @@
     .kpi-card strong { font-size: 22px; color: #ffffff; display: block; }
     .kpi-card small { font-size: 10px; color: #666; display: block; margin-top: 2px; }
 
-    /* Layout Principal Outbound (Ajustado para ocupar a largura inteira) */
-    .outbound-layout { display: grid; grid-template-columns: 1fr 340px; gap: 12px; }
+    /* Layout Principal Outbound */
+    .outbound-layout { display: grid; grid-template-columns: 180px 1fr 340px; gap: 12px; }
+
+    /* Coluna KPIs Comparativos (Esquerda) */
+    .left-kpis { display: flex; flex-direction: column; gap: 10px; }
+    .comp-card { background: #121212; border: 1px solid #222; border-radius: 8px; padding: 14px 10px; text-align: center; }
+    .comp-card span { font-size: 11px; color: #aaa; display: block; margin-bottom: 6px; }
+    .comp-card strong { font-size: 22px; color: #fff; }
 
     /* Area de Graficos Centrais */
     .center-charts { display: flex; flex-direction: column; gap: 10px; }
@@ -60,6 +64,7 @@
     .kpi-row { display: flex; justify-content: space-between; text-align: center; margin-bottom: 8px; background: #1a1a1a; padding: 8px; border-radius: 6px; }
     .kpi-item span { display: block; font-size: 10px; color: #aaa; }
     .kpi-item strong { font-size: 16px; color: #fff; }
+    .pct-row { display: flex; justify-content: flex-end; gap: 12px; font-size: 10px; color: #45a29e; margin-bottom: 10px; }
   </style>
 </head>
 <body>
@@ -108,7 +113,7 @@
   <!-- ABA 2: OUTBOUND - GERAL -->
   <div id="tab-outbound" class="tab-content active">
     
-    <!-- Topo Reorganizado com os 3 Indicadores -->
+    <!-- Topo -->
     <div class="header header-outbound">
       <div style="display: flex; align-items: center; gap: 10px;">
         <span style="font-weight: 900; font-size: 20px; font-style: italic;">LUFT</span>
@@ -116,25 +121,15 @@
         <span style="font-weight: 800; font-size: 18px; color: #60A5FA;">FTD</span>
       </div>
 
-      <div class="sla-group">
-        <div class="sla-box">
-          <span>% SLA</span>
-          <strong id="out-sla">-</strong>
-        </div>
-        <div class="sla-box">
-          <span>Integrado x Fcst</span>
-          <strong id="pct-int-fcst">-</strong>
-        </div>
-        <div class="sla-box">
-          <span>Produzido x Fcst</span>
-          <strong id="pct-prod-fcst">-</strong>
-        </div>
+      <div class="sla-box">
+        <span>% SLA</span>
+        <strong id="out-sla">200,00%</strong>
       </div>
 
       <div class="outbound-title">OUTBOUND GERAL</div>
 
       <div class="date-picker-box">
-        📅 <span id="out-periodo">Dados em Tempo Real</span>
+        📅 <span id="out-periodo">1 de set. de 2026 - 31 de out. de 2026</span>
       </div>
     </div>
 
@@ -142,44 +137,56 @@
     <div class="kpi-outbound-grid">
       <div class="kpi-card">
         <span>Forecast Peças</span>
-        <strong id="kpi-forecast">-</strong>
+        <strong id="kpi-forecast">166.000</strong>
       </div>
       <div class="kpi-card">
         <span>Peças Integradas</span>
-        <strong id="kpi-integradas">-</strong>
-        <small>Pedidos: <b id="ped-integradas">-</b></small>
+        <strong id="kpi-integradas">64.678</strong>
+        <small>Pedidos: <b id="ped-integradas">4</b></small>
       </div>
       <div class="kpi-card">
         <span>Peças Fluxo</span>
-        <strong id="kpi-fluxo">-</strong>
-        <small>Pedidos: <b id="ped-fluxo">-</b></small>
+        <strong id="kpi-fluxo">5.763</strong>
+        <small>Pedidos: <b id="ped-fluxo">0</b></small>
       </div>
       <div class="kpi-card">
         <span>Em Coleta</span>
-        <strong id="kpi-coleta">-</strong>
-        <small>Pedidos: <b id="ped-coleta">-</b></small>
+        <strong id="kpi-coleta">1.219</strong>
+        <small>Pedidos: <b id="ped-coleta">7</b></small>
       </div>
       <div class="kpi-card">
         <span>Em Tratativa</span>
-        <strong id="kpi-tratativa">-</strong>
-        <small>Pedidos: <b id="ped-tratativa">-</b></small>
+        <strong id="kpi-tratativa">0</strong>
+        <small>Pedidos: <b id="ped-tratativa">0</b></small>
       </div>
       <div class="kpi-card">
         <span>Peças Produzidas</span>
-        <strong id="kpi-produzidas">-</strong>
-        <small>Pedidos: <b id="ped-produzidas">-</b></small>
+        <strong id="kpi-produzidas">64.675</strong>
+        <small>Pedidos: <b id="ped-produzidas">936</b></small>
       </div>
       <div class="kpi-card">
         <span>Peças Expedidas</span>
-        <strong id="kpi-expedidas">-</strong>
-        <small>Pedidos: <b id="ped-expedidas">-</b></small>
+        <strong id="kpi-expedidas">58.088</strong>
+        <small>Pedidos: <b id="ped-expedidas">896</b></small>
       </div>
     </div>
 
-    <!-- Layout Principal -->
+    <!-- Layout Principal com 3 Colunas -->
     <div class="outbound-layout">
       
-      <!-- Coluna Central: Gráficos de Evolução Diária -->
+      <!-- Coluna 1: Acompanhamento de Forecast -->
+      <div class="left-kpis">
+        <div class="comp-card">
+          <span>Intregado x Fcst</span>
+          <strong id="pct-int-fcst">39,92%</strong>
+        </div>
+        <div class="comp-card">
+          <span>Produzido x Fcst</span>
+          <strong id="pct-prod-fcst">39,92%</strong>
+        </div>
+      </div>
+
+      <!-- Coluna 2: Gráficos de Evolução Diária -->
       <div class="center-charts">
         <div class="chart-box">
           <span class="chart-box-title">Peças Integradas por Data</span>
@@ -203,7 +210,7 @@
         </div>
       </div>
 
-      <!-- Coluna Direita: Status por Data -->
+      <!-- Coluna 3: Status por Data -->
       <div class="right-chart">
         <span class="chart-box-title">Peças por Data e Status</span>
         <div class="right-chart-container">
@@ -216,141 +223,82 @@
   </div>
 
   <script>
-    function fmt(num) {
-      return Number(num || 0).toLocaleString('pt-BR');
-    }
-
+    // Gerenciador de Abas
     function abrirAba(nomeAba, elemento) {
       document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
       document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
       
       document.getElementById('tab-' + nomeAba).classList.add('active');
       elemento.classList.add('active');
-
-      if (nomeAba === 'estoque') {
-        carregarEstoque();
-      } else if (nomeAba === 'outbound') {
-        carregarOutbound();
-      }
     }
 
-    async function carregarEstoque() {
-      try {
-        const res = await fetch('/api/estoque');
-        const data = await res.json();
+    // Inicialização dos Gráficos Exemplo (Serão alimentados via Neon/SQL)
+    document.addEventListener('DOMContentLoaded', () => {
+      // Setup base para os gráficos de Outbound
+      const datasDemo = ['01/09','02/09','03/09','04/09','08/09','09/09','10/09','11/09','14/09','15/09','16/09','17/09','18/09','21/09','22/09','23/09','24/09','25/09','28/09','29/09','30/09','01/10'];
 
-        if (!data) return;
-
-        document.getElementById('top-estoque').innerText = fmt(data.total_estoque);
-        document.getElementById('top-skus').innerText = fmt(data.total_skus);
-
-        document.getElementById('pick-pecas').innerText = fmt(data.picking?.pecas);
-        document.getElementById('pick-sku').innerText = fmt(data.picking?.sku);
-
-        document.getElementById('pul-pecas').innerText = fmt(data.pulmao?.pecas);
-        document.getElementById('pul-sku').innerText = fmt(data.pulmao?.sku);
-
-      } catch (err) {
-        console.error('Erro ao carregar Estoque:', err);
-      }
-    }
-
-    async function carregarOutbound() {
-      try {
-        const res = await fetch('/api/outbound');
-        const data = await res.json();
-
-        if (!data || data.error) return;
-
-        document.getElementById('out-sla').innerText = data.sla;
-        document.getElementById('pct-int-fcst').innerText = data.pct_integrado_fcst;
-        document.getElementById('pct-prod-fcst').innerText = data.pct_produzido_fcst;
-
-        document.getElementById('kpi-integradas').innerText = fmt(data.integradas.pecas);
-        document.getElementById('ped-integradas').innerText = fmt(data.integradas.pedidos);
-
-        document.getElementById('kpi-fluxo').innerText = fmt(data.fluxo.pecas);
-        document.getElementById('ped-fluxo').innerText = fmt(data.fluxo.pedidos);
-
-        document.getElementById('kpi-coleta').innerText = fmt(data.coleta.pecas);
-        document.getElementById('ped-coleta').innerText = fmt(data.coleta.pedidos);
-
-        document.getElementById('kpi-tratativa').innerText = fmt(data.tratativa.pecas);
-        document.getElementById('ped-tratativa').innerText = fmt(data.tratativa.pedidos);
-
-        document.getElementById('kpi-produzidas').innerText = fmt(data.produzidas.pecas);
-        document.getElementById('ped-produzidas').innerText = fmt(data.produzidas.pedidos);
-
-        document.getElementById('kpi-expedidas').innerText = fmt(data.expedidas.pecas);
-        document.getElementById('ped-expedidas').innerText = fmt(data.expedidas.pedidos);
-
-        const intData = data.graficos.integradas_por_data || [];
-        renderizarBarra('chartIntegradasData', intData.map(d => d.data), intData.map(d => Number(d.total)), '#3B82F6');
-
-        const fatData = data.graficos.faturados_por_data || [];
-        renderizarLinha('chartFaturadosData', fatData.map(d => d.data), fatData.map(d => Number(d.quantidade)), fatData.map(d => Number(d.nota_fiscal)));
-
-        const expData = data.graficos.expedidas_por_data || [];
-        renderizarBarra('chartExpedidasData', expData.map(d => d.data), expData.map(d => Number(d.total)), '#3B82F6');
-
-        const stData = data.graficos.status_por_data || [];
-        renderizarStatusEmpilhado('chartStatusData', stData);
-
-      } catch (err) {
-        console.error('Erro ao carregar Outbound:', err);
-      }
-    }
-
-    function renderizarBarra(id, labels, valores, cor) {
-      const ctx = document.getElementById(id).getContext('2d');
-      if (window[id + '_chart']) window[id + '_chart'].destroy();
-      window[id + '_chart'] = new Chart(ctx, {
+      // 1. Integradas x Forecast
+      new Chart(document.getElementById('chartIntegradasData'), {
         type: 'bar',
-        data: { labels: labels, datasets: [{ data: valores, backgroundColor: cor }] },
+        data: {
+          labels: datasDemo,
+          datasets: [{
+            label: 'TOTAL DIA',
+            data: [330, 583, 1707, 8, 0, 496, 177, 30, 70, 0, 1560, 15896, 118, 0, 0, 5, 348, 3948, 27, 0, 13623, 928, 4],
+            backgroundColor: '#3B82F6'
+          }]
+        },
         options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
       });
-    }
 
-    function renderizarLinha(id, labels, qtd, nf) {
-      const ctx = document.getElementById(id).getContext('2d');
-      if (window[id + '_chart']) window[id + '_chart'].destroy();
-      window[id + '_chart'] = new Chart(ctx, {
+      // 2. Faturados por Data
+      new Chart(document.getElementById('chartFaturadosData'), {
         type: 'line',
         data: {
-          labels: labels,
-          datasets: [
-            { label: 'Quantidade', data: qtd, borderColor: '#3B82F6', fill: false },
-            { label: 'Nota Fiscal', data: nf, borderColor: '#F59E0B', fill: false }
-          ]
+          labels: datasDemo,
+          datasets: [{
+            label: 'Quantidade',
+            data: [71, 842, 675, 1040, 475, 198, 30, 70, 1560, 7161, 15628, 8188, 1347, 4461, 5, 348, 3948, 27, 4051, 6519, 5707, 1219],
+            borderColor: '#3B82F6',
+            fill: false
+          }]
         },
-        options: { responsive: true, maintainAspectRatio: false }
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
       });
-    }
 
-    function renderizarStatusEmpilhado(id, dataset) {
-      const ctx = document.getElementById(id).getContext('2d');
-      if (window[id + '_chart']) window[id + '_chart'].destroy();
-      window[id + '_chart'] = new Chart(ctx, {
+      // 3. Expedidas por Data
+      new Chart(document.getElementById('chartExpedidasData'), {
         type: 'bar',
         data: {
-          labels: dataset.map(d => d.data),
+          labels: datasDemo,
+          datasets: [{
+            label: 'Quantidade',
+            data: [2484, 281, 493, 662, 170, 1061, 600, 38, 19, 1638, 1062, 12693, 10804, 34, 8485, 3670, 1104, 3174, 33, 16, 3340, 6229],
+            backgroundColor: '#3B82F6'
+          }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+      });
+
+      // 4. Status por Data (Barras Horizontais)
+      new Chart(document.getElementById('chartStatusData'), {
+        type: 'bar',
+        data: {
+          labels: datasDemo.slice().reverse(),
           datasets: [
-            { label: 'Expedido', data: dataset.map(d => Number(d.expedido || 0)), backgroundColor: '#3B82F6' },
-            { label: 'Em fluxo', data: dataset.map(d => Number(d.em_fluxo || 0)), backgroundColor: '#06B6D4' },
-            { label: 'Ag. Exp.', data: dataset.map(d => Number(d.ag_exp || 0)), backgroundColor: '#10B981' }
+            { label: 'Expedido', data: [0, 0, 5535, 4018, 27, 3948, 348, 5, 4461, 8183, 118, 15896, 8125, 1560, 70, 30, 177, 496, 8, 1707, 583, 330], backgroundColor: '#3B82F6' },
+            { label: 'Em fluxo', data: [0, 785, 4975, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], backgroundColor: '#06B6D4' },
+            { label: 'Ag. Exp.', data: [4, 141, 3113, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], backgroundColor: '#10B981' }
           ]
         },
         options: {
           indexAxis: 'y',
           responsive: true,
           maintainAspectRatio: false,
-          scales: { x: { stacked: true }, y: { stacked: true } }
+          scales: { x: { stacked: true }, y: { stacked: true } },
+          plugins: { legend: { display: true } }
         }
       });
-    }
-
-    document.addEventListener('DOMContentLoaded', () => {
-      carregarOutbound();
     });
   </script>
 </body>

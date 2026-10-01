@@ -24,21 +24,12 @@ app.get('/api/dashboard', async (req, res) => {
       WHERE ("local_ativo" ILIKE 'S' OR "local_ativo" ILIKE 'ATIVO' OR "local_ativo" = '1')
         AND ("estado" ILIKE 'NORMAL' OR "estado" IS NULL)
         AND ("area" IN ('PP', 'PR', 'PQ', 'SP') OR "setor" IN ('PP', 'PR', 'PQ', 'SP') OR "rua"::text IN ('PP', 'PR', 'PQ', 'SP'))
-    `);
+    `).catch(err => {
+      console.error("Erro pecasEstoque:", err.message);
+      return { rows: [{ total_estoque: 0, total_skus: 0 }] };
+    });
 
-    // 2. Posições e Ocupação Geral vindo da tabela Locais_ftd
-    const posicoesGerais = await pool.query(`
-      SELECT 
-        COUNT(*) AS total_posicoes,
-        COUNT(CASE WHEN "estoque"::text = '1' THEN 1 END) AS posicoes_ocupadas,
-        COUNT(CASE WHEN "estoque"::text = '0' THEN 1 END) AS posicoes_vazias
-      FROM "locais_ftd"
-      WHERE "ativo" ILIKE 'S'
-        AND "obs" IS NULL
-        AND ("area" IN ('PP', 'PR', 'PQ', 'SP') OR "setor" IN ('PP', 'PR', 'PQ', 'SP') OR "rua"::text IN ('PP', 'PR', 'PQ', 'SP'))
-    `);
-
-    // 3. Picking (Peças/SKUs de estoque + Posições de Locais_ftd)
+    // 2. SKUs e Peças por Tipo (Picking x Pulmão) da tabela estoque
     const pickingPecas = await pool.query(`
       SELECT 
         COALESCE(SUM("disponível"), 0) AS total_pecas,
@@ -48,21 +39,8 @@ app.get('/api/dashboard', async (req, res) => {
         AND ("estado" ILIKE 'NORMAL' OR "estado" IS NULL)
         AND ("area" IN ('PP', 'PR', 'PQ', 'SP') OR "setor" IN ('PP', 'PR', 'PQ', 'SP') OR "rua"::text IN ('PP', 'PR', 'PQ', 'SP'))
         AND "tipo_do_local" ILIKE '%PICKING%'
-    `);
+    `).catch(err => ({ rows: [{ total_pecas: 0, total_skus: 0 }] }));
 
-    const pickingPosicoes = await pool.query(`
-      SELECT 
-        COUNT(*) AS capacidade,
-        COUNT(CASE WHEN "estoque"::text = '1' THEN 1 END) AS ocupadas,
-        COUNT(CASE WHEN "estoque"::text = '0' THEN 1 END) AS vazias
-      FROM "locais_ftd"
-      WHERE "ativo" ILIKE 'S'
-        AND "obs" IS NULL
-        AND ("area" IN ('PP', 'PR', 'PQ', 'SP') OR "setor" IN ('PP', 'PR', 'PQ', 'SP') OR "rua"::text IN ('PP', 'PR', 'PQ', 'SP'))
-        AND ("tipo_do_local" ILIKE '%PICKING%' OR "tipo" ILIKE '%PICKING%')
-    `);
-
-    // 4. Pulmão (Peças/SKUs de estoque + Posições de Locais_ftd)
     const pulmaoPecas = await pool.query(`
       SELECT 
         COALESCE(SUM("disponível"), 0) AS total_pecas,
@@ -72,21 +50,9 @@ app.get('/api/dashboard', async (req, res) => {
         AND ("estado" ILIKE 'NORMAL' OR "estado" IS NULL)
         AND ("area" IN ('PP', 'PR', 'PQ', 'SP') OR "setor" IN ('PP', 'PR', 'PQ', 'SP') OR "rua"::text IN ('PP', 'PR', 'PQ', 'SP'))
         AND ("tipo_do_local" ILIKE '%PULMÃO%' OR "tipo_do_local" ILIKE '%PULMAO%')
-    `);
+    `).catch(err => ({ rows: [{ total_pecas: 0, total_skus: 0 }] }));
 
-    const pulmaoPosicoes = await pool.query(`
-      SELECT 
-        COUNT(*) AS capacidade,
-        COUNT(CASE WHEN "estoque"::text = '1' THEN 1 END) AS ocupadas,
-        COUNT(CASE WHEN "estoque"::text = '0' THEN 1 END) AS vazias
-      FROM "locais_ftd"
-      WHERE "ativo" ILIKE 'S'
-        AND "obs" IS NULL
-        AND ("area" IN ('PP', 'PR', 'PQ', 'SP') OR "setor" IN ('PP', 'PR', 'PQ', 'SP') OR "rua"::text IN ('PP', 'PR', 'PQ', 'SP'))
-        AND ("tipo_do_local" ILIKE '%PULMÃO%' OR "tipo_do_local" ILIKE '%PULMAO%' OR "tipo" ILIKE '%PULMÃO%' OR "tipo" ILIKE '%PULMAO%')
-    `);
-
-    // 5. Gráficos de Ocupação
+    // 3. Tabela de Capacidade (Gráficos e Totais do Resumo)
     const graficos = await pool.query(`
       SELECT 
         categoria_estrutura AS categoria,
@@ -105,36 +71,55 @@ app.get('/api/dashboard', async (req, res) => {
           WHEN categoria_estrutura = 'PP - PICKING' THEN 4
           ELSE 5
         END
-    `);
+    `).catch(err => ({ rows: [] }));
+
+    const rowsCapacidade = graficos.rows || [];
+
+    // Soma Total do Armazém (Consolidado do Gráfico)
+    const totalPosicoesGeral = rowsCapacidade.reduce((acc, r) => acc + Number(r.posicoes_capacidade || 0), 0);
+    const totalOcupadasGeral = rowsCapacidade.reduce((acc, r) => acc + Number(r.posicoes_ocupadas || 0), 0);
+    const totalVaziasGeral = rowsCapacidade.reduce((acc, r) => acc + Number(r.posicoes_livres || 0), 0);
+
+    // Soma Picking (Categorias PR - PRATELEIRA, PQ - BLOCADO e PP - PICKING)
+    const pickingRows = rowsCapacidade.filter(r => r.categoria && !r.categoria.includes('PP - PULMÃO'));
+    const pickingCapacidade = pickingRows.reduce((acc, r) => acc + Number(r.posicoes_capacidade || 0), 0);
+    const pickingOcupadas = pickingRows.reduce((acc, r) => acc + Number(r.posicoes_ocupadas || 0), 0);
+    const pickingVazias = pickingRows.reduce((acc, r) => acc + Number(r.posicoes_livres || 0), 0);
+
+    // Soma Pulmão (Categoria PP - PULMÃO)
+    const pulmaoRows = rowsCapacidade.filter(r => r.categoria && r.categoria.includes('PP - PULMÃO'));
+    const pulmaoCapacidade = pulmaoRows.reduce((acc, r) => acc + Number(r.posicoes_capacidade || 0), 0);
+    const pulmaoOcupadas = pulmaoRows.reduce((acc, r) => acc + Number(r.posicoes_ocupadas || 0), 0);
+    const pulmaoVazias = pulmaoRows.reduce((acc, r) => acc + Number(r.posicoes_livres || 0), 0);
 
     res.json({
       gerais: {
-        total_estoque: pecasEstoque.rows[0].total_estoque,
-        total_skus: pecasEstoque.rows[0].total_skus,
-        total_posicoes: posicoesGerais.rows[0].total_posicoes,
-        posicoes_ocupadas: posicoesGerais.rows[0].posicoes_ocupadas,
-        posicoes_vazias: posicoesGerais.rows[0].posicoes_vazias
+        total_estoque: pecasEstoque.rows[0]?.total_estoque || 0,
+        total_skus: pecasEstoque.rows[0]?.total_skus || 0,
+        total_posicoes: totalPosicoesGeral,
+        posicoes_ocupadas: totalOcupadasGeral,
+        posicoes_vazias: totalVaziasGeral
       },
       picking: {
-        total_pecas: pickingPecas.rows[0].total_pecas,
-        total_skus: pickingPecas.rows[0].total_skus,
-        capacidade: pickingPosicoes.rows[0].capacidade,
-        ocupadas: pickingPosicoes.rows[0].ocupadas,
-        vazias: pickingPosicoes.rows[0].vazias
+        total_pecas: pickingPecas.rows[0]?.total_pecas || 0,
+        total_skus: pickingPecas.rows[0]?.total_skus || 0,
+        capacidade: pickingCapacidade,
+        ocupadas: pickingOcupadas,
+        vazias: pickingVazias
       },
       pulmao: {
-        total_pecas: pulmaoPecas.rows[0].total_pecas,
-        total_skus: pulmaoPecas.rows[0].total_skus,
-        capacidade: pulmaoPosicoes.rows[0].capacidade,
-        ocupadas: pulmaoPosicoes.rows[0].ocupadas,
-        vazias: pulmaoPosicoes.rows[0].vazias
+        total_pecas: pulmaoPecas.rows[0]?.total_pecas || 0,
+        total_skus: pulmaoPecas.rows[0]?.total_skus || 0,
+        capacidade: pulmaoCapacidade,
+        ocupadas: pulmaoOcupadas,
+        vazias: pulmaoVazias
       },
-      graficos: graficos.rows,
+      graficos: rowsCapacidade,
       ultima_atualizacao: new Date().toLocaleString('pt-BR')
     });
   } catch (err) {
-    console.error('Erro na consulta:', err);
-    res.status(500).json({ error: 'Erro no banco de dados', detalhe: err.message });
+    console.error('Erro geral no endpoint:', err);
+    res.status(500).json({ error: 'Erro interno do servidor', detalhe: err.message });
   }
 });
 
