@@ -29,22 +29,7 @@ app.get('/api/dashboard', async (req, res) => {
       return { rows: [{ total_estoque: 0, total_skus: 0 }] };
     });
 
-    // 2. Posições e Ocupação Geral vindo da tabela Locais_ftd
-    const posicoesGerais = await pool.query(`
-      SELECT 
-        COUNT(*) AS total_posicoes,
-        COUNT(CASE WHEN CAST("estoque" AS TEXT) = '1' THEN 1 END) AS posicoes_ocupadas,
-        COUNT(CASE WHEN CAST("estoque" AS TEXT) = '0' OR "estoque" IS NULL THEN 1 END) AS posicoes_vazias
-      FROM "Locais_ftd"
-      WHERE "ativo" ILIKE 'S'
-        AND ("obs" IS NULL OR "obs" = '')
-        AND ("area" IN ('PP', 'PR', 'PQ', 'SP') OR "setor" IN ('PP', 'PR', 'PQ', 'SP') OR "rua"::text IN ('PP', 'PR', 'PQ', 'SP'))
-    `).catch(err => {
-      console.error("Erro posicoesGerais:", err.message);
-      return { rows: [{ total_posicoes: 0, posicoes_ocupadas: 0, posicoes_vazias: 0 }] };
-    });
-
-    // 3. Picking (Estoque e Posicoes)
+    // 2. SKUs e Peças por Tipo (Picking x Pulmão) da tabela estoque
     const pickingPecas = await pool.query(`
       SELECT 
         COALESCE(SUM("disponível"), 0) AS total_pecas,
@@ -56,19 +41,6 @@ app.get('/api/dashboard', async (req, res) => {
         AND "tipo_do_local" ILIKE '%PICKING%'
     `).catch(err => ({ rows: [{ total_pecas: 0, total_skus: 0 }] }));
 
-    const pickingPosicoes = await pool.query(`
-      SELECT 
-        COUNT(*) AS capacidade,
-        COUNT(CASE WHEN CAST("estoque" AS TEXT) = '1' THEN 1 END) AS ocupadas,
-        COUNT(CASE WHEN CAST("estoque" AS TEXT) = '0' OR "estoque" IS NULL THEN 1 END) AS vazias
-      FROM "Locais_ftd"
-      WHERE "ativo" ILIKE 'S'
-        AND ("obs" IS NULL OR "obs" = '')
-        AND ("area" IN ('PP', 'PR', 'PQ', 'SP') OR "setor" IN ('PP', 'PR', 'PQ', 'SP') OR "rua"::text IN ('PP', 'PR', 'PQ', 'SP'))
-        AND ("tipo_do_local" ILIKE '%PICKING%' OR "tipo" ILIKE '%PICKING%')
-    `).catch(err => ({ rows: [{ capacidade: 0, ocupadas: 0, vazias: 0 }] }));
-
-    // 4. Pulmão (Estoque e Posicoes)
     const pulmaoPecas = await pool.query(`
       SELECT 
         COALESCE(SUM("disponível"), 0) AS total_pecas,
@@ -80,19 +52,7 @@ app.get('/api/dashboard', async (req, res) => {
         AND ("tipo_do_local" ILIKE '%PULMÃO%' OR "tipo_do_local" ILIKE '%PULMAO%')
     `).catch(err => ({ rows: [{ total_pecas: 0, total_skus: 0 }] }));
 
-    const pulmaoPosicoes = await pool.query(`
-      SELECT 
-        COUNT(*) AS capacidade,
-        COUNT(CASE WHEN CAST("estoque" AS TEXT) = '1' THEN 1 END) AS ocupadas,
-        COUNT(CASE WHEN CAST("estoque" AS TEXT) = '0' OR "estoque" IS NULL THEN 1 END) AS vazias
-      FROM "Locais_ftd"
-      WHERE "ativo" ILIKE 'S'
-        AND ("obs" IS NULL OR "obs" = '')
-        AND ("area" IN ('PP', 'PR', 'PQ', 'SP') OR "setor" IN ('PP', 'PR', 'PQ', 'SP') OR "rua"::text IN ('PP', 'PR', 'PQ', 'SP'))
-        AND ("tipo_do_local" ILIKE '%PULMÃO%' OR "tipo_do_local" ILIKE '%PULMAO%' OR "tipo" ILIKE '%PULMÃO%' OR "tipo" ILIKE '%PULMAO%')
-    `).catch(err => ({ rows: [{ capacidade: 0, ocupadas: 0, vazias: 0 }] }));
-
-    // 5. Gráficos de Ocupação
+    // 3. Tabela de Capacidade (Gráficos e Totais do Resumo)
     const graficos = await pool.query(`
       SELECT 
         categoria_estrutura AS categoria,
@@ -113,29 +73,48 @@ app.get('/api/dashboard', async (req, res) => {
         END
     `).catch(err => ({ rows: [] }));
 
+    const rowsCapacidade = graficos.rows || [];
+
+    // Soma Total do Armazém (Consolidado do Gráfico)
+    const totalPosicoesGeral = rowsCapacidade.reduce((acc, r) => acc + Number(r.posicoes_capacidade || 0), 0);
+    const totalOcupadasGeral = rowsCapacidade.reduce((acc, r) => acc + Number(r.posicoes_ocupadas || 0), 0);
+    const totalVaziasGeral = rowsCapacidade.reduce((acc, r) => acc + Number(r.posicoes_livres || 0), 0);
+
+    // Soma Picking (Categorias PR - PRATELEIRA, PQ - BLOCADO e PP - PICKING)
+    const pickingRows = rowsCapacidade.filter(r => r.categoria && !r.categoria.includes('PP - PULMÃO'));
+    const pickingCapacidade = pickingRows.reduce((acc, r) => acc + Number(r.posicoes_capacidade || 0), 0);
+    const pickingOcupadas = pickingRows.reduce((acc, r) => acc + Number(r.posicoes_ocupadas || 0), 0);
+    const pickingVazias = pickingRows.reduce((acc, r) => acc + Number(r.posicoes_livres || 0), 0);
+
+    // Soma Pulmão (Categoria PP - PULMÃO)
+    const pulmaoRows = rowsCapacidade.filter(r => r.categoria && r.categoria.includes('PP - PULMÃO'));
+    const pulmaoCapacidade = pulmaoRows.reduce((acc, r) => acc + Number(r.posicoes_capacidade || 0), 0);
+    const pulmaoOcupadas = pulmaoRows.reduce((acc, r) => acc + Number(r.posicoes_ocupadas || 0), 0);
+    const pulmaoVazias = pulmaoRows.reduce((acc, r) => acc + Number(r.posicoes_livres || 0), 0);
+
     res.json({
       gerais: {
         total_estoque: pecasEstoque.rows[0]?.total_estoque || 0,
         total_skus: pecasEstoque.rows[0]?.total_skus || 0,
-        total_posicoes: posicoesGerais.rows[0]?.total_posicoes || 0,
-        posicoes_ocupadas: posicoesGerais.rows[0]?.posicoes_ocupadas || 0,
-        posicoes_vazias: posicoesGerais.rows[0]?.posicoes_vazias || 0
+        total_posicoes: totalPosicoesGeral,
+        posicoes_ocupadas: totalOcupadasGeral,
+        posicoes_vazias: totalVaziasGeral
       },
       picking: {
         total_pecas: pickingPecas.rows[0]?.total_pecas || 0,
         total_skus: pickingPecas.rows[0]?.total_skus || 0,
-        capacidade: pickingPosicoes.rows[0]?.capacidade || 0,
-        ocupadas: pickingPosicoes.rows[0]?.ocupadas || 0,
-        vazias: pickingPosicoes.rows[0]?.vazias || 0
+        capacidade: pickingCapacidade,
+        ocupadas: pickingOcupadas,
+        vazias: pickingVazias
       },
       pulmao: {
         total_pecas: pulmaoPecas.rows[0]?.total_pecas || 0,
         total_skus: pulmaoPecas.rows[0]?.total_skus || 0,
-        capacidade: pulmaoPosicoes.rows[0]?.capacidade || 0,
-        ocupadas: pulmaoPosicoes.rows[0]?.ocupadas || 0,
-        vazias: pulmaoPosicoes.rows[0]?.vazias || 0
+        capacidade: pulmaoCapacidade,
+        ocupadas: pulmaoOcupadas,
+        vazias: pulmaoVazias
       },
-      graficos: graficos.rows || [],
+      graficos: rowsCapacidade,
       ultima_atualizacao: new Date().toLocaleString('pt-BR')
     });
   } catch (err) {

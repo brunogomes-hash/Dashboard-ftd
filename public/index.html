@@ -199,7 +199,7 @@
               data: capacidade,
               backgroundColor: '#B57EDC',
               stack: 'stack1',
-              maxBarThickness: 60 // Padroniza a largura máxima para não esticar
+              maxBarThickness: 60
             },
             {
               label: 'Ocupados',
@@ -284,31 +284,31 @@
 
         // Gráficos
         const graficosData = data.graficos || [];
-        const categoriasPicking = graficosData.map(g => g.categoria);
+        
+        // Picking
+        const pickingData = graficosData.filter(g => g.categoria && !g.categoria.includes('PP - PULMÃO'));
+        const categoriasPicking = pickingData.map(g => g.categoria);
 
-        // 1. Gráfico Peças Picking
         renderizarGrafico(
           'chartPecasPicking',
           categoriasPicking,
-          graficosData.map(g => Number(g.pecas_capacidade || 0)),
-          graficosData.map(g => Number(g.pecas_ocupadas || 0)),
-          graficosData.map(g => Number(g.pecas_livres || 0))
+          pickingData.map(g => Number(g.pecas_capacidade || 0)),
+          pickingData.map(g => Number(g.pecas_ocupadas || 0)),
+          pickingData.map(g => Number(g.pecas_livres || 0))
         );
 
-        // 2. Gráfico Posições Picking
         renderizarGrafico(
           'chartPosicoesPicking',
           categoriasPicking,
-          graficosData.map(g => Number(g.posicoes_capacidade || 0)),
-          graficosData.map(g => Number(g.posicoes_ocupadas || 0)),
-          graficosData.map(g => Number(g.posicoes_livres || 0))
+          pickingData.map(g => Number(g.posicoes_capacidade || 0)),
+          pickingData.map(g => Number(g.posicoes_ocupadas || 0)),
+          pickingData.map(g => Number(g.posicoes_livres || 0))
         );
 
         // Pulmão
-        const pulmaoData = graficosData.filter(g => g.categoria && g.categoria.includes('PULMÃO'));
+        const pulmaoData = graficosData.filter(g => g.categoria && g.categoria.includes('PP - PULMÃO'));
         const categoriasPulmao = pulmaoData.map(g => g.categoria);
 
-        // 3. Gráfico Peças Pulmão
         renderizarGrafico(
           'chartPecasPulmao',
           categoriasPulmao,
@@ -317,7 +317,6 @@
           pulmaoData.map(g => Number(g.pecas_livres || 0))
         );
 
-        // 4. Gráfico Posições Pulmão
         renderizarGrafico(
           'chartPosicoesPulmao',
           categoriasPulmao,
