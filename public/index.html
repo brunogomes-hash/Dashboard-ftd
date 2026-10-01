@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dashboard de Estoque - LFT / FTD</title>
-  <!-- Chart.js + Plugin de DataLabels para escrever os números nas barras -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
   <style>
@@ -198,32 +197,28 @@
             {
               label: 'Capacidade',
               data: capacidade,
-              backgroundColor: '#B57EDC', // Roxo
-              stack: 'stack1',
-              categoryPercentage: 0.6,
-              barPercentage: 0.9
+              backgroundColor: '#B57EDC',
+              stack: 'stack1'
             },
             {
               label: 'Ocupados',
               data: ocupados,
-              backgroundColor: '#3B82F6', // Azul (Base)
-              stack: 'stack2',
-              categoryPercentage: 0.6,
-              barPercentage: 0.9
+              backgroundColor: '#3B82F6',
+              stack: 'stack2'
             },
             {
               label: 'Livres',
               data: livres,
-              backgroundColor: '#40C000', // Verde (Empilhado no topo)
-              stack: 'stack2',
-              categoryPercentage: 0.6,
-              barPercentage: 0.9
+              backgroundColor: '#40C000',
+              stack: 'stack2'
             }
           ]
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
+          categoryPercentage: 0.8, // Mantém barras próximas
+          barPercentage: 1.0,      // Gruda o roxo no bloco empilhado (azul + verde)
           plugins: {
             legend: { display: false },
             tooltip: { mode: 'index', intersect: false },
@@ -237,12 +232,12 @@
           },
           scales: {
             x: {
-              stacked: true, // Garante que a stack2 empilhe
+              stacked: true,
               ticks: { color: '#FFFFFF', font: { weight: 'bold', size: 10 } },
               grid: { display: false }
             },
             y: {
-              stacked: true, // Garante escala proporcional idêntica para Roxo e Azul+Verde
+              stacked: true,
               ticks: { color: '#888888' },
               grid: { color: '#222222' }
             }

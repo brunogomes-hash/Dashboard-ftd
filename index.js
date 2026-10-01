@@ -15,45 +15,48 @@ const pool = new Pool({
 
 app.get('/api/dashboard', async (req, res) => {
   try {
-    // 1. Totais Gerais (Filtro por áreas PP, PR, PQ, SP e Estado Normal)
+    // Filtro comum para todas as consultas de posições do armazém
+    const filtroBase = `
+      ("local_ativo" ILIKE 'S' OR "local_ativo" ILIKE 'ATIVO' OR "local_ativo" = '1')
+      AND ("estado" ILIKE 'NORMAL' OR "estado" IS NULL)
+      AND ("area" IN ('PP', 'PR', 'PQ', 'SP') OR "setor" IN ('PP', 'PR', 'PQ', 'SP') OR "rua"::text IN ('PP', 'PR', 'PQ', 'SP'))
+    `;
+
+    // 1. Totais Gerais do Armazém
     const gerais = await pool.query(`
       SELECT 
         COALESCE(SUM("disponível"), 0) AS total_estoque,
         COUNT(DISTINCT "código_do_produto") AS total_skus,
         COUNT(DISTINCT "id_local") AS total_posicoes,
-        COUNT(DISTINCT CASE WHEN "disponível" > 0 THEN "id_local" END) AS posicoes_ocupadas,
-        COUNT(DISTINCT CASE WHEN "disponível" = 0 OR "disponível" IS NULL THEN "id_local" END) AS posicoes_vazias
+        COUNT(DISTINCT CASE WHEN COALESCE("disponível", 0) > 0 THEN "id_local" END) AS posicoes_ocupadas,
+        COUNT(DISTINCT CASE WHEN COALESCE("disponível", 0) = 0 THEN "id_local" END) AS posicoes_vazias
       FROM "estoque"
-      WHERE ("local_ativo" ILIKE 'S' OR "local_ativo" ILIKE 'ATIVO' OR "local_ativo" = '1')
-        AND ("estado" ILIKE 'NORMAL' OR "estado" IS NULL)
-        AND ("area" IN ('PP', 'PR', 'PQ', 'SP') OR "setor" IN ('PP', 'PR', 'PQ', 'SP') OR "rua"::text IN ('PP', 'PR', 'PQ', 'SP'))
+      WHERE ${filtroBase}
     `);
 
-    // 2. Resumo Picking
+    // 2. Resumo Picking (Filtrando também pelas áreas solicitadas)
     const picking = await pool.query(`
       SELECT 
         COALESCE(SUM("disponível"), 0) AS total_pecas,
         COUNT(DISTINCT "código_do_produto") AS total_skus,
         COUNT(DISTINCT "id_local") AS capacidade,
-        COUNT(DISTINCT CASE WHEN "disponível" > 0 THEN "id_local" END) AS ocupadas,
-        COUNT(DISTINCT CASE WHEN "disponível" = 0 OR "disponível" IS NULL THEN "id_local" END) AS vazias
+        COUNT(DISTINCT CASE WHEN COALESCE("disponível", 0) > 0 THEN "id_local" END) AS ocupadas,
+        COUNT(DISTINCT CASE WHEN COALESCE("disponível", 0) = 0 THEN "id_local" END) AS vazias
       FROM "estoque"
-      WHERE ("local_ativo" ILIKE 'S' OR "local_ativo" ILIKE 'ATIVO' OR "local_ativo" = '1')
-        AND ("estado" ILIKE 'NORMAL' OR "estado" IS NULL)
+      WHERE ${filtroBase}
         AND "tipo_do_local" ILIKE '%PICKING%'
     `);
 
-    // 3. Resumo Pulmão
+    // 3. Resumo Pulmão (Filtrando também pelas áreas solicitadas)
     const pulmao = await pool.query(`
       SELECT 
         COALESCE(SUM("disponível"), 0) AS total_pecas,
         COUNT(DISTINCT "código_do_produto") AS total_skus,
         COUNT(DISTINCT "id_local") AS capacidade,
-        COUNT(DISTINCT CASE WHEN "disponível" > 0 THEN "id_local" END) AS ocupadas,
-        COUNT(DISTINCT CASE WHEN "disponível" = 0 OR "disponível" IS NULL THEN "id_local" END) AS vazias
+        COUNT(DISTINCT CASE WHEN COALESCE("disponível", 0) > 0 THEN "id_local" END) AS ocupadas,
+        COUNT(DISTINCT CASE WHEN COALESCE("disponível", 0) = 0 THEN "id_local" END) AS vazias
       FROM "estoque"
-      WHERE ("local_ativo" ILIKE 'S' OR "local_ativo" ILIKE 'ATIVO' OR "local_ativo" = '1')
-        AND ("estado" ILIKE 'NORMAL' OR "estado" IS NULL)
+      WHERE ${filtroBase}
         AND ("tipo_do_local" ILIKE '%PULMÃO%' OR "tipo_do_local" ILIKE '%PULMAO%')
     `);
 
