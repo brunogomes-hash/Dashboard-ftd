@@ -14,10 +14,10 @@ const pool = new Pool({
 app.use(express.static('public'));
 app.use(express.json());
 
-// ROTA ESTOQUE (Usa a tabela itens/estoque com fallback seguro para não dar erro)
+// ROTA 1: Estoque (Consultando a tabela 'estoque' original)
 app.get('/api/estoque', async (req, res) => {
   try {
-    const queryItensEstoque = `
+    const estoqueQuery = `
       SELECT 
         COALESCE(SUM(quantidade), 0) AS total_pecas,
         COALESCE(COUNT(DISTINCT sku), 0) AS total_skus,
@@ -25,21 +25,21 @@ app.get('/api/estoque', async (req, res) => {
         COALESCE(COUNT(DISTINCT sku) FILTER (WHERE tipo_posicao ILIKE '%Picking%' OR pos_picking IS NOT NULL), 0) AS pick_sku,
         COALESCE(SUM(quantidade) FILTER (WHERE tipo_posicao ILIKE '%Pulmao%' OR tipo_posicao ILIKE '%Pulmão%'), 0) AS pul_pecas,
         COALESCE(COUNT(DISTINCT sku) FILTER (WHERE tipo_posicao ILIKE '%Pulmao%' OR tipo_posicao ILIKE '%Pulmão%'), 0) AS pul_sku
-      FROM itens;
+      FROM estoque;
     `;
 
-    const result = await pool.query(queryItensEstoque);
+    const result = await pool.query(estoqueQuery);
     const row = result.rows[0] || {};
 
     res.json({
-      total_estoque: row.total_pecas || 0,
-      total_skus: row.total_skus || 0,
-      picking: { pecas: row.pick_pecas || 0, sku: row.pick_sku || 0 },
-      pulmao: { pecas: row.pul_pecas || 0, sku: row.pul_sku || 0 }
+      total_estoque: Number(row.total_pecas || 0),
+      total_skus: Number(row.total_skus || 0),
+      picking: { pecas: Number(row.pick_pecas || 0), sku: Number(row.pick_sku || 0) },
+      pulmao: { pecas: Number(row.pul_pecas || 0), sku: Number(row.pul_sku || 0) }
     });
   } catch (err) {
-    console.error('Erro na API de estoque:', err);
-    // Retorna zeros sem quebrar o front se a coluna não existir ainda
+    console.error('Erro na API de Estoque:', err);
+    // Caso ocorra erro ou a tabela ainda não esteja pronta, retorna zeros sem derrubar a aplicação
     res.json({
       total_estoque: 0,
       total_skus: 0,
@@ -49,7 +49,7 @@ app.get('/api/estoque', async (req, res) => {
   }
 });
 
-// ROTA OUTBOUND
+// ROTA 2: Outbound (Consultando as tabelas 'saida_porcentagem' e 'itens')
 app.get('/api/outbound', async (req, res) => {
   try {
     const kpiQuery = `
