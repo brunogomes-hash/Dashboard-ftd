@@ -74,11 +74,12 @@
 
     /* KPI Cards Topo Outbound */
     .top-kpis-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-bottom: 8px; }
-    .kpi-card-outbound { background: #181818; border: 1px solid #2a2a2a; border-radius: 6px; padding: 10px; height: 75px; display: flex; flex-direction: column; justify-content: space-between; }
+    .kpi-card-outbound { background: #181818; border: 1px solid #2a2a2a; border-radius: 6px; padding: 10px; height: 80px; display: flex; flex-direction: column; justify-content: space-between; }
     .kpi-card-outbound .title { font-size: 12px; font-weight: bold; color: #e0e0e0; }
-    .kpi-card-outbound .sub { font-size: 10px; color: #888; }
+    .kpi-card-outbound .value-main { font-size: 15px; font-weight: bold; color: #45a29e; }
+    .kpi-card-outbound .sub { font-size: 10px; color: #aaa; }
 
-    /* Layout do Corpo Outbound (Espaço expandido sem coluna esquerda) */
+    /* Layout do Corpo Outbound */
     .outbound-body-grid { display: grid; grid-template-columns: 1fr 300px; gap: 8px; }
 
     .center-charts { display: flex; flex-direction: column; gap: 8px; }
@@ -236,44 +237,49 @@
     <div class="top-kpis-grid">
       <div class="kpi-card-outbound">
         <div class="title">Forecast Peças</div>
+        <div class="value-main" id="fcst-val">0</div>
         <div class="sub">Pedidos: <strong style="color:#fff" id="fcst-ped">-</strong></div>
       </div>
       <div class="kpi-card-outbound">
         <div class="title">Peças Integradas</div>
-        <div class="sub">Pedidos: <strong style="color:#fff" id="integ-ped">-</strong></div>
+        <div class="value-main" id="integ-val">0</div>
+        <div class="sub">Pedidos: <strong style="color:#fff" id="integ-ped">0</strong></div>
       </div>
       <div class="kpi-card-outbound">
         <div class="title">Peças Fluxo</div>
-        <div class="sub">Pedidos: <strong style="color:#fff" id="fluxo-ped">-</strong></div>
+        <div class="value-main" id="fluxo-val">0</div>
+        <div class="sub">Pedidos: <strong style="color:#fff" id="fluxo-ped">0</strong></div>
       </div>
       <div class="kpi-card-outbound">
         <div class="title">Em Coleta</div>
-        <div class="sub">Pedidos: <strong style="color:#fff" id="coleta-ped">-</strong></div>
+        <div class="value-main" id="coleta-val">0</div>
+        <div class="sub">Pedidos: <strong style="color:#fff" id="coleta-ped">0</strong></div>
       </div>
       <div class="kpi-card-outbound">
         <div class="title">Em Tratativa</div>
-        <div class="sub">Pedidos: <strong style="color:#fff" id="trat-ped">-</strong></div>
+        <div class="value-main" id="trat-val">0</div>
+        <div class="sub">Pedidos: <strong style="color:#fff" id="trat-ped">0</strong></div>
       </div>
       <div class="kpi-card-outbound">
         <div class="title">Peças Produzidas</div>
-        <div class="sub">Pedidos: <strong style="color:#fff" id="prod-ped">-</strong></div>
+        <div class="value-main" id="prod-val">0</div>
+        <div class="sub">Pedidos: <strong style="color:#fff" id="prod-ped">0</strong></div>
       </div>
       <div class="kpi-card-outbound">
         <div class="title">Peças Expedidas</div>
-        <div class="sub">Pedidos: <strong style="color:#fff" id="exp-ped">-</strong></div>
+        <div class="value-main" id="exp-val">0</div>
+        <div class="sub">Pedidos: <strong style="color:#fff" id="exp-ped">0</strong></div>
       </div>
     </div>
 
-    <!-- Grid do Corpo -->
+    <!-- Grid do Corpo Outbound -->
     <div class="outbound-body-grid">
-      <!-- Centro (Painéis de Gráficos) -->
       <div class="center-charts">
         <div class="chart-panel">
           <span class="chart-panel-tag">Peças Integradas por Data</span>
           <div class="chart-container-outbound"><canvas id="chartIntegradas"></canvas></div>
         </div>
         
-        <!-- GRÁFICO ALIMENTADO PELA TABELA (saida_conferida_pecas) -->
         <div class="chart-panel">
           <span class="chart-panel-tag">Peças e Pedidos Faturados por Data</span>
           <div class="chart-container-outbound"><canvas id="chartFaturados"></canvas></div>
@@ -285,7 +291,6 @@
         </div>
       </div>
 
-      <!-- Direita (Gráfico Lateral) -->
       <div class="right-chart">
         <span class="chart-panel-tag">Peças por Data e Status</span>
         <div class="empty-chart-icon">📊</div>
@@ -305,7 +310,6 @@
       return ((parte / total) * 100).toFixed(2).replace('.', ',') + '%';
     }
 
-    // Inicializa datas com o primeiro e último dia do mês corrente caso estejam vazias
     function inicializarFiltrosData() {
       const dIni = document.getElementById('data-inicio');
       const dFim = document.getElementById('data-fim');
@@ -380,11 +384,11 @@
         const data = await res.json();
         if (!data || data.error) return;
 
-        const pickPecas = Number(data.picking?.total_pecas || data.picking?.pecas || 0);
-        const pickSkus  = Number(data.picking?.total_skus  || data.picking?.skus  || 0);
-        const pickCap   = Number(data.picking?.capacidade   || 0);
-        const pickOcup  = Number(data.picking?.ocupadas     || 0);
-        const pickVaz   = Number(data.picking?.vazias       || 0);
+        const pickPecas = Number(data.picking?.total_pecas || 0);
+        const pickSkus  = Number(data.picking?.total_skus || 0);
+        const pickCap   = Number(data.picking?.capacidade || 0);
+        const pickOcup  = Number(data.picking?.ocupadas || 0);
+        const pickVaz   = Number(data.picking?.vazias || 0);
 
         document.getElementById('pick-pecas').innerText = fmt(pickPecas);
         document.getElementById('pick-sku').innerText   = fmt(pickSkus);
@@ -394,11 +398,11 @@
         document.getElementById('pick-ocup-pct').innerText = calcPct(pickOcup, pickCap);
         document.getElementById('pick-vaz-pct').innerText  = calcPct(pickVaz, pickCap);
 
-        const pulPecas = Number(data.pulmao?.total_pecas || data.pulmao?.pecas || 0);
-        const pulSkus  = Number(data.pulmao?.total_skus  || data.pulmao?.skus  || 0);
-        const pulCap   = Number(data.pulmao?.capacidade   || 0);
-        const pulOcup  = Number(data.pulmao?.ocupadas     || 0);
-        const pulVaz   = Number(data.pulmao?.vazias       || 0);
+        const pulPecas = Number(data.pulmao?.total_pecas || 0);
+        const pulSkus  = Number(data.pulmao?.total_skus || 0);
+        const pulCap   = Number(data.pulmao?.capacidade || 0);
+        const pulOcup  = Number(data.pulmao?.ocupadas || 0);
+        const pulVaz   = Number(data.pulmao?.vazias || 0);
 
         document.getElementById('pul-pecas').innerText = fmt(pulPecas);
         document.getElementById('pul-sku').innerText   = fmt(pulSkus);
@@ -408,11 +412,11 @@
         document.getElementById('pul-ocup-pct').innerText = calcPct(pulOcup, pulCap);
         document.getElementById('pul-vaz-pct').innerText  = calcPct(pulVaz, pulCap);
 
-        document.getElementById('top-estoque').innerText  = fmt(data.gerais?.total_estoque || (pickPecas + pulPecas));
-        document.getElementById('top-skus').innerText     = fmt(data.gerais?.total_skus || Math.max(pickSkus, pulSkus));
-        document.getElementById('top-posicoes').innerText = fmt(data.gerais?.total_posicoes || (pickCap + pulCap));
-        document.getElementById('top-ocupadas').innerText = fmt(data.gerais?.posicoes_ocupadas || (pickOcup + pulOcup));
-        document.getElementById('top-vazias').innerText   = fmt(data.gerais?.posicoes_vazias || (pickVaz + pulVaz));
+        document.getElementById('top-estoque').innerText  = fmt(data.gerais?.total_estoque);
+        document.getElementById('top-skus').innerText     = fmt(data.gerais?.total_skus);
+        document.getElementById('top-posicoes').innerText = fmt(data.gerais?.total_posicoes);
+        document.getElementById('top-ocupadas').innerText = fmt(data.gerais?.posicoes_ocupadas);
+        document.getElementById('top-vazias').innerText   = fmt(data.gerais?.posicoes_vazias);
         document.getElementById('top-atualizacao').innerText = data.ultima_atualizacao || '-';
 
         const graficosData = data.graficos || [];
@@ -426,7 +430,7 @@
         const categoriasPulmao = pulmaoData.map(g => g.categoria);
 
         renderizarGrafico('chartPecasPulmao', categoriasPulmao, pulmaoData.map(g => Number(g.pecas_capacidade || 0)), pulmaoData.map(g => Number(g.pecas_ocupadas || 0)), pulmaoData.map(g => Number(g.pecas_livres || 0)));
-        renderizarGrafico('chartPosicoesPulmao', categoriasPulmao, pulmaoData.map(g => Number(g.posicoes_capacidade || 0)), pulmaoData.map(g => Number(g.posicoes_livres || 0)));
+        renderizarGrafico('chartPosicoesPulmao', categoriasPulmao, pulmaoData.map(g => Number(g.posicoes_capacidade || 0)), pulmaoData.map(g => Number(g.posicoes_ocupadas || 0)), pulmaoData.map(g => Number(g.posicoes_livres || 0)));
       } catch (err) {
         console.error('Erro ao carregar estoque:', err);
       }
@@ -439,47 +443,47 @@
         const dataInicio = document.getElementById('data-inicio').value;
         const dataFim = document.getElementById('data-fim').value;
 
-        // Envia as datas puras (YYYY-MM-DD) para a API
         const res = await fetch(`/api/outbound?data_inicio=${dataInicio}&data_fim=${dataFim}`);
         const data = await res.json();
         if (!data || data.error) return;
 
-        if (data.sla) document.getElementById('out-sla').innerText = data.sla;
-        if (data.integ_vs_fcst) document.getElementById('integ-vs-fcst').innerText = data.integ_vs_fcst;
-        if (data.prod_vs_fcst) document.getElementById('prod-vs-fcst').innerText = data.prod_vs_fcst;
+        // Atualização de KPIs no Cabeçalho
+        if (data.sla_pct) document.getElementById('out-sla').innerText = data.sla_pct;
+        if (data.integrado_vs_fcst) document.getElementById('integ-vs-fcst').innerText = data.integrado_vs_fcst;
+        if (data.produzido_vs_fcst) document.getElementById('prod-vs-fcst').innerText = data.produzido_vs_fcst;
 
-        document.getElementById('integ-ped').innerText = fmt(data.pedidos_integradas);
-        document.getElementById('trat-ped').innerText = fmt(data.pedidos_tratativa);
-        document.getElementById('prod-ped').innerText = fmt(data.pedidos_produzidas);
-        document.getElementById('exp-ped').innerText = fmt(data.pedidos_expedidas);
+        // Valores das Peças (Número grande)
+        document.getElementById('fcst-val').innerText   = fmt(data.forecast_pecas);
+        document.getElementById('integ-val').innerText  = fmt(data.pecas_integradas);
+        document.getElementById('fluxo-val').innerText  = fmt(data.pecas_fluxo);
+        document.getElementById('coleta-val').innerText = fmt(data.em_coleta);
+        document.getElementById('trat-val').innerText   = fmt(data.em_tratativa);
+        document.getElementById('prod-val').innerText   = fmt(data.pecas_produzidas);
+        document.getElementById('exp-val').innerText    = fmt(data.pecas_expedidas);
 
-        // Renderiza Gráfico 1: Peças Integradas filtradas por importado_em (Somente Data)
-        if (data.pecas_integradas) {
-          const labelsInteg = data.pecas_integradas.map(i => {
-            const dt = String(i.data || i.importado_em).split('T')[0].split('-');
-            return `${dt[2]}/${dt[1]}`;
-          });
-          const valoresInteg = data.pecas_integradas.map(i => Number(i.total_pecas || i.qtd || 0));
-          renderSimpleBarChart('chartIntegradas', labelsInteg, valoresInteg, '#45a29e', 'Peças Integradas');
-        }
+        // Subtítulos dos Pedidos
+        document.getElementById('integ-ped').innerText  = fmt(data.pedidos_integradas);
+        document.getElementById('fluxo-ped').innerText  = fmt(data.pedidos_fluxo);
+        document.getElementById('coleta-ped').innerText = fmt(data.pedidos_coleta);
+        document.getElementById('trat-ped').innerText   = fmt(data.pedidos_tratativa);
+        document.getElementById('prod-ped').innerText   = fmt(data.pedidos_produzidas);
+        document.getElementById('exp-ped').innerText    = fmt(data.pedidos_expedidas);
 
-        // Renderiza Gráfico 2: Peças e Pedidos Faturados por Data
-        if (data.saida_conferida_pecas) {
-          const faturadosData = data.saida_conferida_pecas || [];
-          const labelsDatas = faturadosData.map(i => {
+        // Gráfico de Peças Integradas por Data
+        if (data.pecas_integradas_grafico) {
+          const labelsInteg = data.pecas_integradas_grafico.map(i => {
             const dt = String(i.data).split('T')[0].split('-');
             return `${dt[2]}/${dt[1]}`;
           });
-          const totalPecas = faturadosData.map(i => Number(i.total_peças_conferidas || 0));
-
-          renderSimpleBarChart('chartFaturados', labelsDatas, totalPecas, '#3B82F6', 'Total Peças Conferidas');
+          const valoresInteg = data.pecas_integradas_grafico.map(i => Number(i.total_pecas || 0));
+          renderBarChart('chartIntegradas', labelsInteg, valoresInteg, '#45a29e', 'Peças Integradas');
         }
       } catch (err) {
         console.error('Erro ao carregar outbound:', err);
       }
     }
 
-    function renderSimpleBarChart(canvasId, labels, dataValores, cor, legendLabel) {
+    function renderBarChart(canvasId, labels, dataValores, cor, legendLabel) {
       const canvas = document.getElementById(canvasId);
       if (!canvas) return;
 
