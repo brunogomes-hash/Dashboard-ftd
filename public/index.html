@@ -3,23 +3,18 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dashboard de Estoque - Luft / FTD</title>
+  <title>Dashboard de Estoque</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
     body { background-color: #0b0c10; color: #ffffff; padding: 12px; }
 
-    /* Cabeçalho */
-    .header { display: flex; justify-content: space-between; align-items: center; background: #000000; border-radius: 8px; margin-bottom: 12px; border: 1px solid #222; padding: 8px 15px; }
+    /* Cabeçalho sem o bloco de logos */
+    .header { display: flex; justify-content: space-between; align-items: center; background: #000000; border-radius: 8px; margin-bottom: 12px; border: 1px solid #222; padding: 12px 18px; }
     
-    .header-left { display: flex; align-items: center; }
-
-    /* Bloco das logos sem fundo */
-    .header-branding { display: flex; align-items: center; gap: 18px; }
-
-    .header-title-box { margin-left: 25px; }
-    .header-title { font-size: 20px; font-weight: 800; letter-spacing: 2px; color: #ffffff; text-transform: uppercase; }
+    .header-title-box { display: flex; align-items: center; }
+    .header-title { font-size: 22px; font-weight: 800; letter-spacing: 2px; color: #ffffff; text-transform: uppercase; }
 
     .kpi-top-container { display: flex; gap: 8px; }
     .kpi-top { background: #1f2833; padding: 5px 12px; border-radius: 6px; text-align: center; border: 1px solid #45a29e; }
@@ -57,33 +52,10 @@
 </head>
 <body>
 
-  <!-- Topo com Vetores das Logos sem Fundo -->
+  <!-- Topo Simplificado -->
   <div class="header">
-    <div class="header-left">
-      <div class="header-branding">
-        <!-- Logo Luft -->
-        <svg height="38" viewBox="0 0 260 60" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <circle cx="30" cy="30" r="28" fill="#FFFFF0"/>
-          <path d="M 12 37 L 43 13 L 33 45 Z" fill="#000000"/>
-          <text x="65" y="34" font-family="'Segoe UI', Arial, sans-serif" font-weight="900" font-style="italic" font-size="32" fill="#FFFFFF">LUFT</text>
-          <text x="66" y="50" font-family="'Segoe UI', Arial, sans-serif" font-weight="800" font-style="italic" font-size="13" fill="#FFFFFF" letter-spacing="3.5">LOGISTICS</text>
-        </svg>
-
-        <!-- Divisória Fina -->
-        <div style="width: 1px; height: 32px; background-color: #333333;"></div>
-
-        <!-- Logo FTD -->
-        <svg height="38" viewBox="0 0 160 60" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <text x="0" y="36" font-family="'Segoe UI', Arial, sans-serif" font-weight="900" font-size="42" fill="#FFFFFF">FT</text>
-          <path d="M 54 10 L 70 25 L 54 40 L 62 40 L 78 25 L 62 10 Z" fill="#60A5FA"/>
-          <path d="M 68 10 L 84 25 L 68 40 L 76 40 L 92 25 L 76 10 Z" fill="#FFFFFF"/>
-          <text x="0" y="54" font-family="'Segoe UI', Arial, sans-serif" font-weight="700" font-size="15" fill="#60A5FA" letter-spacing="1">educação</text>
-        </svg>
-      </div>
-
-      <div class="header-title-box">
-        <span class="header-title">ESTOQUE</span>
-      </div>
+    <div class="header-title-box">
+      <span class="header-title">ESTOQUE</span>
     </div>
 
     <div>
