@@ -6,7 +6,8 @@ require('dotenv').config();
 const app = express();
 const port = process.env.PORT || 3000;
 
-app.use(express.static('public'));
+// Servir os arquivos estáticos da pasta public
+app.use(express.static(path.join(__dirname, 'public')));
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -59,15 +60,16 @@ app.get('/api/dashboard', async (req, res) => {
       ultima_atualizacao: new Date().toLocaleString('pt-BR')
     });
   } catch (err) {
-    console.error('Erro na consulta:', err);
-    res.status(500).json({ error: 'Erro ao carregar dados do banco' });
+    console.error('Erro na consulta ao banco:', err);
+    res.status(500).json({ error: 'Erro ao carregar dados do banco de dados' });
   }
 });
 
-app.get('*', (req, res) => {
+// ✅ Código correto para Express v5:
+app.get('/{*splat}', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 app.listen(port, () => {
   console.log(`Servidor rodando na porta ${port}`);
-});
+}); 
