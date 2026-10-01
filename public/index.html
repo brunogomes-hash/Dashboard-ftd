@@ -59,14 +59,18 @@
     .logo-badge { background: #1a2a3a; color: #fff; font-weight: 900; padding: 6px 12px; border-radius: 4px; font-size: 16px; font-style: italic; }
     .logo-sub { background: #fff; color: #000; font-weight: bold; padding: 4px 8px; border-radius: 4px; font-size: 12px; margin-right: 6px; }
     
-    /* GRUPO DE CARDS REUNIDOS AO LADO DO SLA NO CABEÇALHO */
+    /* CARDS DE HEADER (SLA, INTEGRADO X FCST, PRODUZIDO X FCST) */
     .header-kpis-group { display: flex; align-items: center; gap: 6px; }
-    .header-kpi-card { border: 1px solid #ffffff; padding: 4px 10px; border-radius: 4px; text-align: center; background: #000; min-width: 90px; }
+    .header-kpi-card { border: 1px solid #ffffff; padding: 4px 10px; border-radius: 4px; text-align: center; background: #000; min-width: 85px; }
     .header-kpi-card span { font-size: 9px; display: block; color: #ccc; white-space: nowrap; }
     .header-kpi-card strong { font-size: 15px; color: #fff; }
 
-    .main-title-outbound { font-size: 24px; font-weight: 900; letter-spacing: 2px; }
-    .date-filter-box { background: #1c1c1c; border: 1px solid #333; padding: 6px 12px; border-radius: 4px; font-size: 11px; color: #aaa; }
+    .main-title-outbound { font-size: 22px; font-weight: 900; letter-spacing: 2px; }
+
+    /* FILTRO DE DATA SEM HORA */
+    .date-filter-box { background: #1c1c1c; border: 1px solid #333; padding: 4px 10px; border-radius: 6px; display: flex; align-items: center; gap: 6px; font-size: 11px; color: #aaa; }
+    .date-input { background: #000; color: #fff; border: 1px solid #444; border-radius: 4px; padding: 3px 6px; font-size: 11px; outline: none; cursor: pointer; }
+    .date-input::-webkit-calendar-picker-indicator { filter: invert(1); cursor: pointer; }
 
     /* KPI Cards Topo Outbound */
     .top-kpis-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-bottom: 8px; }
@@ -74,7 +78,7 @@
     .kpi-card-outbound .title { font-size: 12px; font-weight: bold; color: #e0e0e0; }
     .kpi-card-outbound .sub { font-size: 10px; color: #888; }
 
-    /* Layout do Corpo Outbound (Ajustado para ocupar toda a largura sem a coluna da esquerda) */
+    /* Layout do Corpo Outbound (Espaço expandido sem coluna esquerda) */
     .outbound-body-grid { display: grid; grid-template-columns: 1fr 300px; gap: 8px; }
 
     .center-charts { display: flex; flex-direction: column; gap: 8px; }
@@ -84,7 +88,7 @@
     .right-chart { background: #181818; border: 1px solid #2a2a2a; border-radius: 6px; padding: 8px; position: relative; height: 556px; }
 
     .empty-chart-icon { display: flex; align-items: center; justify-content: center; height: 100%; color: #444; font-size: 32px; }
-    .chart-container-outbound { position: relative; height: 100%; width: 100%; padding-top: 20px; }
+    .chart-container-outbound { position: relative; height: 100%; width: 100%; padding-top: 18px; }
   </style>
 </head>
 <body>
@@ -95,7 +99,7 @@
     <button class="tab-btn" onclick="switchTab('outbound')">Outbound - Geral</button>
   </div>
 
-  <!-- ABA 1: ESTOQUE (INTACTA) -->
+  <!-- ABA 1: ESTOQUE -->
   <div id="tab-estoque" class="tab-content active">
     <div class="header">
       <div class="header-title-box">
@@ -200,7 +204,7 @@
         <div class="logo-badge">LUFT LOGISTICS</div>
         <div class="logo-sub">FTD educação</div>
         
-        <!-- CARDS COLOCADOS UM AO LADO DO OUTRO NO CABEÇALHO -->
+        <!-- KPIs REUNIDOS NO CABEÇALHO -->
         <div class="header-kpis-group">
           <div class="header-kpi-card">
             <span>% SLA</span>
@@ -219,8 +223,12 @@
 
       <div class="main-title-outbound">OUTBOUND GERAL</div>
 
+      <!-- SELETOR DE DATA FILTRANDO SOMENTE YYYY-MM-DD (SEM HORA) -->
       <div class="date-filter-box">
-        <span id="out-data-filtro">1 de out. de 2026 - 31 de out. de 2026</span> ▼
+        <span>Filtrar Data:</span>
+        <input type="date" id="data-inicio" class="date-input" onchange="carregarOutbound()">
+        <span>até</span>
+        <input type="date" id="data-fim" class="date-input" onchange="carregarOutbound()">
       </div>
     </div>
 
@@ -256,13 +264,13 @@
       </div>
     </div>
 
-    <!-- Grid do Corpo (Sem a coluna esquerda) -->
+    <!-- Grid do Corpo -->
     <div class="outbound-body-grid">
       <!-- Centro (Painéis de Gráficos) -->
       <div class="center-charts">
         <div class="chart-panel">
           <span class="chart-panel-tag">Peças Integradas por Data</span>
-          <div class="empty-chart-icon">📈</div>
+          <div class="chart-container-outbound"><canvas id="chartIntegradas"></canvas></div>
         </div>
         
         <!-- GRÁFICO ALIMENTADO PELA TABELA (saida_conferida_pecas) -->
@@ -295,6 +303,22 @@
     function calcPct(parte, total) {
       if (!total || total == 0) return '0,00%';
       return ((parte / total) * 100).toFixed(2).replace('.', ',') + '%';
+    }
+
+    // Inicializa datas com o primeiro e último dia do mês corrente caso estejam vazias
+    function inicializarFiltrosData() {
+      const dIni = document.getElementById('data-inicio');
+      const dFim = document.getElementById('data-fim');
+
+      if (!dIni.value || !dFim.value) {
+        const hoje = new Date();
+        const ano = hoje.getFullYear();
+        const mes = String(hoje.getMonth() + 1).padStart(2, '0');
+        const ultimoDiaMes = new Date(ano, hoje.getMonth() + 1, 0).getDate();
+
+        if (!dIni.value) dIni.value = `${ano}-${mes}-01`;
+        if (!dFim.value) dFim.value = `${ano}-${mes}-${String(ultimoDiaMes).padStart(2, '0')}`;
+      }
     }
 
     function switchTab(tabName) {
@@ -356,7 +380,6 @@
         const data = await res.json();
         if (!data || data.error) return;
 
-        // Suporte resiliente às chaves do backend
         const pickPecas = Number(data.picking?.total_pecas || data.picking?.pecas || 0);
         const pickSkus  = Number(data.picking?.total_skus  || data.picking?.skus  || 0);
         const pickCap   = Number(data.picking?.capacidade   || 0);
@@ -403,7 +426,7 @@
         const categoriasPulmao = pulmaoData.map(g => g.categoria);
 
         renderizarGrafico('chartPecasPulmao', categoriasPulmao, pulmaoData.map(g => Number(g.pecas_capacidade || 0)), pulmaoData.map(g => Number(g.pecas_ocupadas || 0)), pulmaoData.map(g => Number(g.pecas_livres || 0)));
-        renderizarGrafico('chartPosicoesPulmao', categoriasPulmao, pulmaoData.map(g => Number(g.posicoes_capacidade || 0)), pulmaoData.map(g => Number(g.posicoes_ocupadas || 0)), pulmaoData.map(g => Number(g.posicoes_livres || 0)));
+        renderizarGrafico('chartPosicoesPulmao', categoriasPulmao, pulmaoData.map(g => Number(g.posicoes_capacidade || 0)), pulmaoData.map(g => Number(g.posicoes_livres || 0)));
       } catch (err) {
         console.error('Erro ao carregar estoque:', err);
       }
@@ -411,7 +434,13 @@
 
     async function carregarOutbound() {
       try {
-        const res = await fetch('/api/outbound');
+        inicializarFiltrosData();
+
+        const dataInicio = document.getElementById('data-inicio').value;
+        const dataFim = document.getElementById('data-fim').value;
+
+        // Envia as datas puras (YYYY-MM-DD) para a API
+        const res = await fetch(`/api/outbound?data_inicio=${dataInicio}&data_fim=${dataFim}`);
         const data = await res.json();
         if (!data || data.error) return;
 
@@ -424,32 +453,47 @@
         document.getElementById('prod-ped').innerText = fmt(data.pedidos_produzidas);
         document.getElementById('exp-ped').innerText = fmt(data.pedidos_expedidas);
 
-        // Renderiza o gráfico Faturados utilizando a tabela "saida_conferida_pecas"
-        const faturadosData = data.saida_conferida_pecas || [];
-        const labelsDatas = faturadosData.map(i => new Date(i.data).toLocaleDateString('pt-BR', {day: '2-digit', month: '2-digit'}));
-        const totalPecas = faturadosData.map(i => Number(i.total_peças_conferidas || 0));
+        // Renderiza Gráfico 1: Peças Integradas filtradas por importado_em (Somente Data)
+        if (data.pecas_integradas) {
+          const labelsInteg = data.pecas_integradas.map(i => {
+            const dt = String(i.data || i.importado_em).split('T')[0].split('-');
+            return `${dt[2]}/${dt[1]}`;
+          });
+          const valoresInteg = data.pecas_integradas.map(i => Number(i.total_pecas || i.qtd || 0));
+          renderSimpleBarChart('chartIntegradas', labelsInteg, valoresInteg, '#45a29e', 'Peças Integradas');
+        }
 
-        renderChartFaturados(labelsDatas, totalPecas);
+        // Renderiza Gráfico 2: Peças e Pedidos Faturados por Data
+        if (data.saida_conferida_pecas) {
+          const faturadosData = data.saida_conferida_pecas || [];
+          const labelsDatas = faturadosData.map(i => {
+            const dt = String(i.data).split('T')[0].split('-');
+            return `${dt[2]}/${dt[1]}`;
+          });
+          const totalPecas = faturadosData.map(i => Number(i.total_peças_conferidas || 0));
+
+          renderSimpleBarChart('chartFaturados', labelsDatas, totalPecas, '#3B82F6', 'Total Peças Conferidas');
+        }
       } catch (err) {
         console.error('Erro ao carregar outbound:', err);
       }
     }
 
-    function renderChartFaturados(labels, dataValores) {
-      const canvas = document.getElementById('chartFaturados');
+    function renderSimpleBarChart(canvasId, labels, dataValores, cor, legendLabel) {
+      const canvas = document.getElementById(canvasId);
       if (!canvas) return;
 
       const ctx = canvas.getContext('2d');
-      if (window.chartFaturadosObj) window.chartFaturadosObj.destroy();
+      if (window[canvasId + 'Obj']) window[canvasId + 'Obj'].destroy();
 
-      window.chartFaturadosObj = new Chart(ctx, {
+      window[canvasId + 'Obj'] = new Chart(ctx, {
         type: 'bar',
         data: {
           labels: labels.length ? labels : [],
           datasets: [{
-            label: 'Total Peças Conferidas',
+            label: legendLabel,
             data: dataValores,
-            backgroundColor: '#3B82F6',
+            backgroundColor: cor,
             borderRadius: 4
           }]
         },
