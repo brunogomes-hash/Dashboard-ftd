@@ -28,7 +28,7 @@ app.get('/api/outbound', async (req, res) => {
           CASE WHEN "status_operacional" ILIKE '%importado%'
                  OR "status_operacional" ILIKE '%separa%'
                  OR "status_operacional" ILIKE '%onda%'
-                 OR "status_operacional" ILIKE '%confer%'
+                 OR "status_operacional" ILIKE '%confer% '
                  OR "status_operacional" ILIKE '%em conferência%'
                THEN "quantidade" ELSE 0 END
         ), 0) AS total_fluxo,
@@ -139,62 +139,5 @@ app.get('/api/outbound', async (req, res) => {
   } catch (err) {
     console.error('Erro no Outbound:', err);
     res.status(500).json({ error: 'Erro no Outbound', detalhe: err.message });
-  }
-});
-
-// ROUTE 3: NOTAS EM FLUXO
-// Exclui: Expedido, Cancelado, Aguardando expedição
-app.get('/api/notas-fluxo', async (req, res) => {
-  try {
-    const filtroStatus = `
-      "nota_fiscal" IS NOT NULL
-      AND TRIM("nota_fiscal"::text) <> ''
-      AND COALESCE("status_operacional", '') NOT ILIKE ALL (
-        ARRAY['%expedido%', '%cancelado%', '%aguardando exped%']
-      )
-    `;
-
-    const notas = await pool.query(`
-      SELECT
-        "nota_fiscal" AS nota_fiscal,
-        COALESCE("status_operacional", 'SEM STATUS') AS status,
-        COALESCE(SUM("quantidade"), 0) AS pecas,
-        COUNT(DISTINCT "pedido_de_venda") AS pedidos
-      FROM "itens"
-      WHERE ${filtroStatus}
-      GROUP BY "nota_fiscal", COALESCE("status_operacional", 'SEM STATUS')
-      ORDER BY "nota_fiscal" DESC
-      LIMIT 2000
-    `);
-
-    const porStatus = await pool.query(`
-      SELECT
-        COALESCE("status_operacional", 'SEM STATUS') AS status,
-        COUNT(DISTINCT "nota_fiscal") AS notas,
-        COALESCE(SUM("quantidade"), 0) AS pecas
-      FROM "itens"
-      WHERE ${filtroStatus}
-      GROUP BY COALESCE("status_operacional", 'SEM STATUS')
-      ORDER BY notas DESC
-    `);
-
-    const totais = await pool.query(`
-      SELECT
-        COUNT(DISTINCT "nota_fiscal") AS total_notas,
-        COALESCE(SUM("quantidade"), 0) AS total_pecas
-      FROM "itens"
-      WHERE ${filtroStatus}
-    `);
-
-    res.json({
-      total_notas: Number(totais.rows[0]?.total_notas || 0),
-      total_pecas: Number(totais.rows[0]?.total_pecas || 0),
-      por_status: porStatus.rows,
-      notas: notas.rows,
-      ultima_atualizacao: new Date().toLocaleString('pt-BR')
-    });
-  } catch (err) {
-    console.error('Erro Notas Fluxo:', err);
-    res.status(500).json({ error: 'Erro Notas Fluxo', detalhe: err.message });
   }
 });
