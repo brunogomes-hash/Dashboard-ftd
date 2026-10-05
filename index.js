@@ -13,6 +13,78 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
+
+// ===== CACHE DO ÚLTIMO RESULTADO BOM =====
+// Quando o banco está sendo recarregado (tabela vazia), o site continua mostrando
+// o último resultado válido. Guarda na memória e numa tabela própria "dashboard_cache"
+// (não mexe nas suas tabelas), para sobreviver a reinícios do Render.
+const memoria = {};
+
+async function iniciarCache() {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS dashboard_cache (
+        chave TEXT PRIMARY KEY,
+        payload JSONB NOT NULL,
+        atualizado_em TEXT NOT NULL
+      )
+    `);
+  } catch (e) {
+    console.error('Aviso: não foi possível criar a tabela de cache:', e.message);
+  }
+}
+iniciarCache();
+
+async function salvarCache(chave, resposta) {
+  const hora = new Date().toLocaleString('pt-BR');
+  memoria[chave] = { resposta, hora };
+  try {
+    await pool.query(
+      `INSERT INTO dashboard_cache (chave, payload, atualizado_em) VALUES ($1, $2, $3)
+       ON CONFLICT (chave) DO UPDATE SET payload = EXCLUDED.payload, atualizado_em = EXCLUDED.atualizado_em`,
+      [chave, JSON.stringify(resposta), hora]
+    );
+  } catch (e) {
+    console.error('Aviso: não foi possível salvar o cache:', e.message);
+  }
+}
+
+async function lerCache(chave) {
+  if (memoria[chave]) return memoria[chave];
+  try {
+    const r = await pool.query('SELECT payload, atualizado_em FROM dashboard_cache WHERE chave = $1', [chave]);
+    if (r.rows[0]) {
+      const item = { resposta: r.rows[0].payload, hora: r.rows[0].atualizado_em };
+      memoria[chave] = item;
+      return item;
+    }
+  } catch (e) {}
+  return null;
+}
+
+// Responde com dados novos; se vierem vazios, responde com o último resultado bom
+async function responderComCache(res, chave, resposta, estaVazio) {
+  if (!estaVazio(resposta)) {
+    salvarCache(chave, resposta);
+    return res.json(resposta);
+  }
+  const anterior = await lerCache(chave);
+  if (anterior) {
+    return res.json({ ...anterior.resposta, ultima_atualizacao: anterior.hora, dados_anteriores: true });
+  }
+  return res.json(resposta);
+}
+
+// Se a consulta falhar (ex.: durante a carga), tenta o último resultado bom
+async function erroComCache(res, chave, err, titulo) {
+  console.error(titulo + ':', err);
+  const anterior = await lerCache(chave);
+  if (anterior) {
+    return res.json({ ...anterior.resposta, ultima_atualizacao: anterior.hora, dados_anteriores: true });
+  }
+  return res.status(500).json({ error: titulo, detalhe: err.message });
+}
+
 // ===== ARQUIVOS DO SITE =====
 // Serve o index.html da pasta "public" se existir; senão, da raiz do projeto
 const pastaSite = fs.existsSync(path.join(__dirname, 'public', 'index.html'))
@@ -36,6 +108,7 @@ app.get('/api/dashboard', async (req, res) => {
 
 // ROUTE 2: OUTBOUND GERAL
 app.get('/api/outbound', async (req, res) => {
+  const chaveOutbound = `outbound:${req.query.data_inicio || 'mes'}:${req.query.data_fim || 'atual'}`;
   try {
     const { data_inicio, data_fim } = req.query;
 
@@ -137,7 +210,7 @@ app.get('/api/outbound', async (req, res) => {
     const prod = kpisProduzidos.rows[0] || {};
     const exp = kpisExpedidos.rows[0] || {};
 
-    res.json({
+    const resposta = {
       forecast_pecas: 0,
       pecas_integradas: Number(imp.total_integradas || 0),
       pedidos_integradas: Number(imp.pedidos_integrados || 0),
@@ -156,10 +229,12 @@ app.get('/api/outbound', async (req, res) => {
       integrado_vs_fcst: '0,00%',
       produzido_vs_fcst: '0,00%',
       ultima_atualizacao: new Date().toLocaleString('pt-BR')
-    });
+    };
+
+    await responderComCache(res, chaveOutbound, resposta,
+      d => d.pecas_integradas === 0 && d.pecas_produzidas === 0 && d.pecas_expedidas === 0);
   } catch (err) {
-    console.error('Erro no Outbound:', err);
-    res.status(500).json({ error: 'Erro no Outbound', detalhe: err.message });
+    await erroComCache(res, chaveOutbound, err, 'Erro no Outbound');
   }
 });
 
@@ -207,16 +282,17 @@ app.get('/api/notas-fluxo', async (req, res) => {
       WHERE ${filtroStatus}
     `);
 
-    res.json({
+    const resposta = {
       total_notas: Number(totais.rows[0]?.total_notas || 0),
       total_pecas: Number(totais.rows[0]?.total_pecas || 0),
       por_status: porStatus.rows,
       notas: notas.rows,
       ultima_atualizacao: new Date().toLocaleString('pt-BR')
-    });
+    };
+
+    await responderComCache(res, 'notas-fluxo', resposta, d => d.total_notas === 0);
   } catch (err) {
-    console.error('Erro Notas Fluxo:', err);
-    res.status(500).json({ error: 'Erro Notas Fluxo', detalhe: err.message });
+    await erroComCache(res, 'notas-fluxo', err, 'Erro Notas Fluxo');
   }
 });
 
