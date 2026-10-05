@@ -147,14 +147,12 @@ app.get('/api/outbound', async (req, res) => {
         ) AS pedidos_fluxo,
 
         COALESCE(SUM(
-          CASE WHEN "status_operacional" ILIKE '%coleta%' 
-                 OR "status_operacional" ILIKE '%expedi%'
+          CASE WHEN "status_operacional" ILIKE '%aguardando exped%'
                THEN "quantidade" ELSE 0 END
         ), 0) AS total_coleta,
 
         COUNT(DISTINCT 
-          CASE WHEN "status_operacional" ILIKE '%coleta%' 
-                 OR "status_operacional" ILIKE '%expedi%'
+          CASE WHEN "status_operacional" ILIKE '%aguardando exped%'
                THEN "pedido_de_venda" END
         ) AS pedidos_coleta,
 
@@ -175,6 +173,7 @@ app.get('/api/outbound', async (req, res) => {
       FROM "itens"
       WHERE "importado_em"::timestamp >= $1::timestamp 
         AND "importado_em"::timestamp <= $2::timestamp
+        AND COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
     `, [dtInicio, dtFim]);
 
     const kpisProduzidos = await pool.query(`
@@ -184,6 +183,7 @@ app.get('/api/outbound', async (req, res) => {
       FROM "itens"
       WHERE "conferido_em"::timestamp >= $1::timestamp 
         AND "conferido_em"::timestamp <= $2::timestamp
+        AND COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
     `, [dtInicio, dtFim]);
 
     const kpisExpedidos = await pool.query(`
@@ -191,8 +191,9 @@ app.get('/api/outbound', async (req, res) => {
         COALESCE(SUM("quantidade"), 0) AS total_expedidas,
         COUNT(DISTINCT "pedido_de_venda") AS pedidos_expedidos
       FROM "itens"
-      WHERE "pesado_em"::timestamp >= $1::timestamp 
-        AND "pesado_em"::timestamp <= $2::timestamp
+      WHERE "processado_em"::timestamp >= $1::timestamp 
+        AND "processado_em"::timestamp <= $2::timestamp
+        AND COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
     `, [dtInicio, dtFim]);
 
     const graficoIntegradas = await pool.query(`
@@ -202,6 +203,7 @@ app.get('/api/outbound', async (req, res) => {
       FROM "itens"
       WHERE "importado_em"::timestamp >= $1::timestamp 
         AND "importado_em"::timestamp <= $2::timestamp
+        AND COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
       GROUP BY DATE("importado_em")
       ORDER BY DATE("importado_em") ASC
     `, [dtInicio, dtFim]);
