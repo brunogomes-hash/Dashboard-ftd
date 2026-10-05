@@ -72,7 +72,8 @@
     .nf-kpi { background: #181818; border: 1px solid #2a2a2a; border-radius: 6px; padding: 10px 16px; min-width: 150px; }
     .nf-kpi span { display: block; font-size: 11px; color: #aaa; }
     .nf-kpi strong { font-size: 20px; color: #45a29e; }
-    .nf-grid { display: grid; grid-template-columns: 320px 1fr; gap: 8px; }
+    .nf-grid { display: grid; grid-template-columns: 380px 1fr; gap: 8px; align-items: start; }
+    .nf-left { display: flex; flex-direction: column; gap: 8px; }
     .nf-panel { background: #181818; border: 1px solid #2a2a2a; border-radius: 6px; padding: 10px; }
     .nf-scroll { max-height: 620px; overflow: auto; }
     .nf-table { width: 100%; border-collapse: collapse; font-size: 12px; }
@@ -86,7 +87,7 @@
   <div class="tabs-nav">
     <button class="tab-btn active" onclick="switchTab('estoque')">Estoque</button>
     <button class="tab-btn" onclick="switchTab('outbound')">Outbound - Geral</button>
-    <button class="tab-btn" onclick="switchTab('notas')">Notas em Fluxo</button>
+    <button class="tab-btn" onclick="switchTab('notas')">Resumo de NF</button>
   </div>
 
   <!-- ABA 1: ESTOQUE -->
@@ -235,32 +236,43 @@
     </div>
   </div>
 
-  <!-- ABA 3: NOTAS EM FLUXO -->
+  <!-- ABA 3: RESUMO DE NF -->
   <div id="tab-notas" class="tab-content">
     <div class="header">
-      <span class="header-title">NOTAS EM FLUXO</span>
+      <span class="header-title">RESUMO DE NF</span>
       <div class="update-time">Última Atualização: <span id="nf-atualizacao">-</span></div>
     </div>
 
     <div class="nf-kpis">
       <div class="nf-kpi"><span>Total de Notas</span><strong id="nf-total-notas">0</strong></div>
+      <div class="nf-kpi"><span>Total de SKUs (1 por NF)</span><strong id="nf-total-skus">0</strong></div>
       <div class="nf-kpi"><span>Total de Peças</span><strong id="nf-total-pecas">0</strong></div>
     </div>
 
     <div class="nf-grid">
-      <div class="nf-panel">
-        <div class="section-title">Por Status</div>
-        <table class="nf-table">
-          <thead><tr><th>Status</th><th>Notas</th><th>Peças</th></tr></thead>
-          <tbody id="nf-status-body"></tbody>
-        </table>
+      <div class="nf-left">
+        <div class="nf-panel">
+          <div class="section-title">Por Status</div>
+          <table class="nf-table">
+            <thead><tr><th>Status</th><th>Notas</th><th>SKUs</th><th>Peças</th></tr></thead>
+            <tbody id="nf-status-body"></tbody>
+          </table>
+        </div>
+        <div class="nf-panel">
+          <div class="section-title">Por Canal</div>
+          <table class="nf-table">
+            <thead><tr><th>Canal</th><th>Notas</th><th>SKUs</th><th>Peças</th></tr></thead>
+            <tbody id="nf-canal-body"></tbody>
+          </table>
+        </div>
       </div>
+
       <div class="nf-panel">
         <div class="section-title">Notas</div><br>
-        <input type="text" id="nf-busca" class="nf-search" placeholder="Buscar nota ou status..." oninput="filtrarNotas()">
+        <input type="text" id="nf-busca" class="nf-search" placeholder="Buscar nota, canal, destinatário ou status..." oninput="filtrarNotas()">
         <div class="nf-scroll">
           <table class="nf-table">
-            <thead><tr><th>Nota Fiscal</th><th>Status</th><th>Pedidos</th><th>Peças</th></tr></thead>
+            <thead><tr><th>Nota Fiscal</th><th>Canal</th><th>Destinatário</th><th>Status</th><th>SKUs</th><th>Pedidos</th><th>Peças</th></tr></thead>
             <tbody id="nf-notas-body"></tbody>
           </table>
         </div>
@@ -515,8 +527,12 @@
       });
     }
 
-    // ===== NOTAS EM FLUXO =====
+    // ===== RESUMO DE NF =====
     let notasFluxoCache = [];
+
+    function esc(v) {
+      return String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
 
     async function carregarNotasFluxo() {
       try {
@@ -525,28 +541,33 @@
         if (!data || data.error) { console.error(data); return; }
 
         document.getElementById('nf-total-notas').innerText = fmt(data.total_notas);
+        document.getElementById('nf-total-skus').innerText = fmt(data.total_skus);
         document.getElementById('nf-total-pecas').innerText = fmt(data.total_pecas);
         document.getElementById('nf-atualizacao').innerText = data.ultima_atualizacao || '-';
 
         document.getElementById('nf-status-body').innerHTML = (data.por_status || []).map(s =>
-          `<tr><td>${s.status}</td><td>${fmt(s.notas)}</td><td>${fmt(s.pecas)}</td></tr>`
+          `<tr><td>${esc(s.status)}</td><td>${fmt(s.notas)}</td><td>${fmt(s.skus)}</td><td>${fmt(s.pecas)}</td></tr>`
+        ).join('');
+
+        document.getElementById('nf-canal-body').innerHTML = (data.por_canal || []).map(c =>
+          `<tr><td>${esc(c.canal)}</td><td>${fmt(c.notas)}</td><td>${fmt(c.skus)}</td><td>${fmt(c.pecas)}</td></tr>`
         ).join('');
 
         notasFluxoCache = data.notas || [];
         filtrarNotas();
       } catch (err) {
-        console.error('Erro ao carregar notas em fluxo:', err);
+        console.error('Erro ao carregar resumo de NF:', err);
       }
     }
 
     function filtrarNotas() {
       const termo = (document.getElementById('nf-busca').value || '').toLowerCase();
       const lista = notasFluxoCache.filter(n =>
-        String(n.nota_fiscal).toLowerCase().includes(termo) ||
-        String(n.status).toLowerCase().includes(termo)
+        [n.nota_fiscal, n.canal, n.destinatario, n.status]
+          .some(v => String(v ?? '').toLowerCase().includes(termo))
       );
       document.getElementById('nf-notas-body').innerHTML = lista.map(n =>
-        `<tr><td>${n.nota_fiscal}</td><td>${n.status}</td><td>${fmt(n.pedidos)}</td><td>${fmt(n.pecas)}</td></tr>`
+        `<tr><td>${esc(n.nota_fiscal)}</td><td>${esc(n.canal)}</td><td>${esc(n.destinatario)}</td><td>${esc(n.status)}</td><td>${fmt(n.skus)}</td><td>${fmt(n.pedidos)}</td><td>${fmt(n.pecas)}</td></tr>`
       ).join('');
     }
 

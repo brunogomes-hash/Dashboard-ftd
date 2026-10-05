@@ -299,61 +299,92 @@ app.get('/api/outbound', async (req, res) => {
   }
 });
 
-// ROUTE 3: NOTAS EM FLUXO
-// Exclui: Expedido, Cancelado, Aguardando expedição
+// ROUTE 3: RESUMO DE NF (todos os status)
+// Qtde de SKUs: o valor se repete em todas as linhas da nota, então pegamos 1 por nota (MAX), sem somar.
 app.get('/api/notas-fluxo', async (req, res) => {
   try {
-    const filtroStatus = `
-      "nota_fiscal" IS NOT NULL
-      AND TRIM("nota_fiscal"::text) <> ''
-      AND COALESCE("status_operacional", '') NOT ILIKE ALL (
-        ARRAY['%expedido%', '%cancelado%', '%aguardando exped%']
+    const base = `
+      WITH base AS (
+        SELECT
+          "nota_fiscal"::text AS nota_fiscal,
+          COALESCE(NULLIF(TRIM("status_operacional"), ''), 'SEM STATUS') AS status,
+          MAX("canal") AS canal,
+          MAX("destinatario") AS destinatario,
+          MAX(NULLIF(TRIM("qtde_de_produto"::text), '')::numeric) AS skus,
+          COALESCE(SUM("quantidade"), 0) AS pecas,
+          COUNT(DISTINCT "pedido_de_venda") AS pedidos
+        FROM "itens"
+        WHERE "nota_fiscal" IS NOT NULL
+          AND TRIM("nota_fiscal"::text) <> ''
+        GROUP BY "nota_fiscal"::text,
+                 COALESCE(NULLIF(TRIM("status_operacional"), ''), 'SEM STATUS')
+      ),
+      nf AS (
+        SELECT
+          nota_fiscal,
+          MAX(canal) AS canal,
+          MAX(destinatario) AS destinatario,
+          MAX(skus) AS skus,
+          SUM(pecas) AS pecas
+        FROM base
+        GROUP BY nota_fiscal
       )
     `;
 
     const notas = await pool.query(`
-      SELECT
-        "nota_fiscal" AS nota_fiscal,
-        COALESCE("status_operacional", 'SEM STATUS') AS status,
-        COALESCE(SUM("quantidade"), 0) AS pecas,
-        COUNT(DISTINCT "pedido_de_venda") AS pedidos
-      FROM "itens"
-      WHERE ${filtroStatus}
-      GROUP BY "nota_fiscal", COALESCE("status_operacional", 'SEM STATUS')
-      ORDER BY "nota_fiscal" DESC
-      LIMIT 2000
+      ${base}
+      SELECT nota_fiscal, status, canal, destinatario, skus, pedidos, pecas
+      FROM base
+      ORDER BY nota_fiscal DESC
+      LIMIT 5000
     `);
 
     const porStatus = await pool.query(`
+      ${base}
       SELECT
-        COALESCE("status_operacional", 'SEM STATUS') AS status,
-        COUNT(DISTINCT "nota_fiscal") AS notas,
-        COALESCE(SUM("quantidade"), 0) AS pecas
-      FROM "itens"
-      WHERE ${filtroStatus}
-      GROUP BY COALESCE("status_operacional", 'SEM STATUS')
+        status,
+        COUNT(DISTINCT nota_fiscal) AS notas,
+        COALESCE(SUM(skus), 0) AS skus,
+        COALESCE(SUM(pecas), 0) AS pecas
+      FROM base
+      GROUP BY status
+      ORDER BY notas DESC
+    `);
+
+    const porCanal = await pool.query(`
+      ${base}
+      SELECT
+        COALESCE(NULLIF(TRIM(canal), ''), 'SEM CANAL') AS canal,
+        COUNT(*) AS notas,
+        COALESCE(SUM(skus), 0) AS skus,
+        COALESCE(SUM(pecas), 0) AS pecas
+      FROM nf
+      GROUP BY 1
       ORDER BY notas DESC
     `);
 
     const totais = await pool.query(`
+      ${base}
       SELECT
-        COUNT(DISTINCT "nota_fiscal") AS total_notas,
-        COALESCE(SUM("quantidade"), 0) AS total_pecas
-      FROM "itens"
-      WHERE ${filtroStatus}
+        COUNT(*) AS total_notas,
+        COALESCE(SUM(skus), 0) AS total_skus,
+        COALESCE(SUM(pecas), 0) AS total_pecas
+      FROM nf
     `);
 
     const resposta = {
       total_notas: Number(totais.rows[0]?.total_notas || 0),
+      total_skus: Number(totais.rows[0]?.total_skus || 0),
       total_pecas: Number(totais.rows[0]?.total_pecas || 0),
       por_status: porStatus.rows,
+      por_canal: porCanal.rows,
       notas: notas.rows,
       ultima_atualizacao: new Date().toLocaleString('pt-BR')
     };
 
-    await responderComCache(res, 'notas-fluxo', resposta, d => d.total_notas === 0);
+    await responderComCache(res, 'resumo-nf', resposta, d => d.total_notas === 0);
   } catch (err) {
-    await erroComCache(res, 'notas-fluxo', err, 'Erro Notas Fluxo');
+    await erroComCache(res, 'resumo-nf', err, 'Erro Resumo NF');
   }
 });
 
