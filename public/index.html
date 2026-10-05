@@ -9,38 +9,27 @@
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
     body { background-color: #0b0c10; color: #ffffff; padding: 12px; }
-
-    /* Navegação por Abas */
     .tabs-nav { display: flex; gap: 8px; margin-bottom: 12px; }
     .tab-btn { background: #1a1a1a; color: #888; border: 1px solid #333; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 13px; }
     .tab-btn.active { background: #45a29e; color: #000; border-color: #45a29e; }
-
-    /* Conteúdo das Abas */
     .tab-content { display: none; }
     .tab-content.active { display: block; }
 
-    /* ABA ESTOQUE */
-    .header { display: flex; justify-content: space-between; align-items: center; background: #000000; border-radius: 8px; margin-bottom: 12px; border: 1px solid #222; padding: 12px 18px; }
-    .header-title { font-size: 22px; font-weight: 800; letter-spacing: 2px; color: #ffffff; text-transform: uppercase; }
-
+    /* ESTOQUE */
+    .header { display: flex; justify-content: space-between; align-items: center; background: #000; border-radius: 8px; margin-bottom: 12px; border: 1px solid #222; padding: 12px 18px; }
+    .header-title { font-size: 22px; font-weight: 800; letter-spacing: 2px; color: #fff; text-transform: uppercase; }
     .kpi-top-container { display: flex; gap: 8px; }
     .kpi-top { background: #1f2833; padding: 5px 12px; border-radius: 6px; text-align: center; border: 1px solid #45a29e; }
     .kpi-top span { display: block; font-size: 9px; color: #c5c6c7; text-transform: uppercase; }
     .kpi-top strong { font-size: 16px; color: #fff; }
-
     .update-time { font-size: 10px; color: #888; text-align: right; margin-top: 3px; }
-
-    /* Grid Estoque */
     .grid-container { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     .section-card { background: #121212; border-radius: 8px; padding: 12px; border: 1px solid #2a2a2a; }
     .section-title { display: inline-block; background: #e0e0e0; color: #000; padding: 3px 14px; border-radius: 12px; font-weight: bold; font-size: 12px; margin-bottom: 10px; }
-
     .kpi-row { display: flex; justify-content: space-between; text-align: center; margin-bottom: 8px; background: #1a1a1a; padding: 8px; border-radius: 6px; }
     .kpi-item span { display: block; font-size: 10px; color: #aaa; }
     .kpi-item strong { font-size: 16px; color: #fff; }
-
     .pct-row { display: flex; justify-content: flex-end; gap: 12px; font-size: 10px; color: #45a29e; margin-bottom: 10px; }
-
     .chart-box { background: #181818; border-radius: 8px; padding: 10px; border: 1px solid #282828; margin-top: 10px; }
     .chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
     .chart-title-tag { background: #e0e0e0; color: #000; font-size: 10px; font-weight: bold; padding: 2px 8px; border-radius: 8px; }
@@ -50,57 +39,60 @@
     .color-purple { background-color: #B57EDC; }
     .color-green { background-color: #40C000; }
     .color-blue { background-color: #3B82F6; }
-
     .chart-container { position: relative; height: 210px; width: 100%; }
 
-    /* ABA OUTBOUND */
+    /* OUTBOUND */
     .outbound-header { display: flex; align-items: center; justify-content: space-between; background: #000; padding: 6px 12px; border-radius: 6px; margin-bottom: 8px; border: 1px solid #222; }
     .logos-box { display: flex; align-items: center; gap: 8px; }
     .logo-badge { background: #1a2a3a; color: #fff; font-weight: 900; padding: 6px 12px; border-radius: 4px; font-size: 16px; font-style: italic; }
     .logo-sub { background: #fff; color: #000; font-weight: bold; padding: 4px 8px; border-radius: 4px; font-size: 12px; margin-right: 6px; }
-    
     .header-kpis-group { display: flex; align-items: center; gap: 6px; }
-    .header-kpi-card { border: 1px solid #ffffff; padding: 4px 10px; border-radius: 4px; text-align: center; background: #000; min-width: 85px; }
+    .header-kpi-card { border: 1px solid #fff; padding: 4px 10px; border-radius: 4px; text-align: center; background: #000; min-width: 85px; }
     .header-kpi-card span { font-size: 9px; display: block; color: #ccc; white-space: nowrap; }
     .header-kpi-card strong { font-size: 15px; color: #fff; }
-
     .main-title-outbound { font-size: 22px; font-weight: 900; letter-spacing: 2px; }
-
     .date-filter-box { background: #1c1c1c; border: 1px solid #333; padding: 4px 10px; border-radius: 6px; display: flex; align-items: center; gap: 6px; font-size: 11px; color: #aaa; }
     .date-input { background: #000; color: #fff; border: 1px solid #444; border-radius: 4px; padding: 3px 6px; font-size: 11px; outline: none; cursor: pointer; }
     .date-input::-webkit-calendar-picker-indicator { filter: invert(1); cursor: pointer; }
-
     .top-kpis-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-bottom: 8px; }
     .kpi-card-outbound { background: #181818; border: 1px solid #2a2a2a; border-radius: 6px; padding: 10px; height: 80px; display: flex; flex-direction: column; justify-content: space-between; }
     .kpi-card-outbound .title { font-size: 12px; font-weight: bold; color: #e0e0e0; }
     .kpi-card-outbound .value-main { font-size: 15px; font-weight: bold; color: #45a29e; }
     .kpi-card-outbound .sub { font-size: 10px; color: #aaa; }
-
     .outbound-body-grid { display: grid; grid-template-columns: 1fr 300px; gap: 8px; }
     .center-charts { display: flex; flex-direction: column; gap: 8px; }
     .chart-panel { background: #181818; border: 1px solid #2a2a2a; border-radius: 6px; padding: 8px; height: 180px; position: relative; }
     .chart-panel-tag { position: absolute; top: 8px; left: 8px; background: #eaeaea; color: #000; font-size: 10px; font-weight: bold; padding: 2px 8px; border-radius: 10px; z-index: 2; }
-
     .right-chart { background: #181818; border: 1px solid #2a2a2a; border-radius: 6px; padding: 8px; position: relative; height: 556px; }
     .empty-chart-icon { display: flex; align-items: center; justify-content: center; height: 100%; color: #444; font-size: 32px; }
     .chart-container-outbound { position: relative; height: 100%; width: 100%; padding-top: 18px; }
+
+    /* NOTAS EM FLUXO */
+    .nf-kpis { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+    .nf-kpi { background: #181818; border: 1px solid #2a2a2a; border-radius: 6px; padding: 10px 16px; min-width: 150px; }
+    .nf-kpi span { display: block; font-size: 11px; color: #aaa; }
+    .nf-kpi strong { font-size: 20px; color: #45a29e; }
+    .nf-grid { display: grid; grid-template-columns: 320px 1fr; gap: 8px; }
+    .nf-panel { background: #181818; border: 1px solid #2a2a2a; border-radius: 6px; padding: 10px; }
+    .nf-scroll { max-height: 620px; overflow: auto; }
+    .nf-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .nf-table th { position: sticky; top: 0; background: #222; color: #fff; text-align: left; padding: 6px 8px; }
+    .nf-table td { padding: 5px 8px; border-bottom: 1px solid #262626; }
+    .nf-search { background: #000; color: #fff; border: 1px solid #444; border-radius: 4px; padding: 5px 8px; font-size: 12px; margin-bottom: 8px; width: 250px; }
   </style>
 </head>
 <body>
 
-  <!-- Menu de Abas -->
   <div class="tabs-nav">
     <button class="tab-btn active" onclick="switchTab('estoque')">Estoque</button>
     <button class="tab-btn" onclick="switchTab('outbound')">Outbound - Geral</button>
+    <button class="tab-btn" onclick="switchTab('notas')">Notas em Fluxo</button>
   </div>
 
   <!-- ABA 1: ESTOQUE -->
   <div id="tab-estoque" class="tab-content active">
     <div class="header">
-      <div class="header-title-box">
-        <span class="header-title">ESTOQUE</span>
-      </div>
-
+      <div class="header-title-box"><span class="header-title">ESTOQUE</span></div>
       <div>
         <div class="kpi-top-container">
           <div class="kpi-top"><span>Total Estoque</span><strong id="top-estoque">-</strong></div>
@@ -196,25 +188,13 @@
       <div class="logos-box">
         <div class="logo-badge">LUFT LOGISTICS</div>
         <div class="logo-sub">FTD educação</div>
-        
         <div class="header-kpis-group">
-          <div class="header-kpi-card">
-            <span>% SLA</span>
-            <strong id="out-sla">100,00%</strong>
-          </div>
-          <div class="header-kpi-card">
-            <span>Integrado x Fcst</span>
-            <strong id="integ-vs-fcst">0,00%</strong>
-          </div>
-          <div class="header-kpi-card">
-            <span>Produzido x Fcst</span>
-            <strong id="prod-vs-fcst">0,00%</strong>
-          </div>
+          <div class="header-kpi-card"><span>% SLA</span><strong id="out-sla">100,00%</strong></div>
+          <div class="header-kpi-card"><span>Integrado x Fcst</span><strong id="integ-vs-fcst">0,00%</strong></div>
+          <div class="header-kpi-card"><span>Produzido x Fcst</span><strong id="prod-vs-fcst">0,00%</strong></div>
         </div>
       </div>
-
       <div class="main-title-outbound">OUTBOUND GERAL</div>
-
       <div class="date-filter-box">
         <span>Filtrar Data:</span>
         <input type="date" id="data-inicio" class="date-input" onchange="carregarOutbound()">
@@ -223,64 +203,31 @@
       </div>
     </div>
 
-    <!-- Cards KPI Topo -->
     <div class="top-kpis-grid">
-      <div class="kpi-card-outbound">
-        <div class="title">Forecast Peças</div>
-        <div class="value-main" id="fcst-val">0</div>
-        <div class="sub">Pedidos: <strong style="color:#fff" id="fcst-ped">-</strong></div>
-      </div>
-      <div class="kpi-card-outbound">
-        <div class="title">Peças Integradas</div>
-        <div class="value-main" id="integ-val">0</div>
-        <div class="sub">Pedidos: <strong style="color:#fff" id="integ-ped">0</strong></div>
-      </div>
-      <div class="kpi-card-outbound">
-        <div class="title">Peças Fluxo</div>
-        <div class="value-main" id="fluxo-val">0</div>
-        <div class="sub">Pedidos: <strong style="color:#fff" id="fluxo-ped">0</strong></div>
-      </div>
-      <div class="kpi-card-outbound">
-        <div class="title">Em Coleta</div>
-        <div class="value-main" id="coleta-val">0</div>
-        <div class="sub">Pedidos: <strong style="color:#fff" id="coleta-ped">0</strong></div>
-      </div>
-      <div class="kpi-card-outbound">
-        <div class="title">Em Tratativa</div>
-        <div class="value-main" id="trat-val">0</div>
-        <div class="sub">Pedidos: <strong style="color:#fff" id="trat-ped">0</strong></div>
-      </div>
-      <div class="kpi-card-outbound">
-        <div class="title">Peças Produzidas</div>
-        <div class="value-main" id="prod-val">0</div>
-        <div class="sub">Pedidos: <strong style="color:#fff" id="prod-ped">0</strong></div>
-      </div>
-      <div class="kpi-card-outbound">
-        <div class="title">Peças Expedidas</div>
-        <div class="value-main" id="exp-val">0</div>
-        <div class="sub">Pedidos: <strong style="color:#fff" id="exp-ped">0</strong></div>
-      </div>
+      <div class="kpi-card-outbound"><div class="title">Forecast Peças</div><div class="value-main" id="fcst-val">0</div><div class="sub">Pedidos: <strong style="color:#fff" id="fcst-ped">-</strong></div></div>
+      <div class="kpi-card-outbound"><div class="title">Peças Integradas</div><div class="value-main" id="integ-val">0</div><div class="sub">Pedidos: <strong style="color:#fff" id="integ-ped">0</strong></div></div>
+      <div class="kpi-card-outbound"><div class="title">Peças Fluxo</div><div class="value-main" id="fluxo-val">0</div><div class="sub">Pedidos: <strong style="color:#fff" id="fluxo-ped">0</strong></div></div>
+      <div class="kpi-card-outbound"><div class="title">Em Coleta</div><div class="value-main" id="coleta-val">0</div><div class="sub">Pedidos: <strong style="color:#fff" id="coleta-ped">0</strong></div></div>
+      <div class="kpi-card-outbound"><div class="title">Em Tratativa</div><div class="value-main" id="trat-val">0</div><div class="sub">Pedidos: <strong style="color:#fff" id="trat-ped">0</strong></div></div>
+      <div class="kpi-card-outbound"><div class="title">Peças Produzidas</div><div class="value-main" id="prod-val">0</div><div class="sub">Pedidos: <strong style="color:#fff" id="prod-ped">0</strong></div></div>
+      <div class="kpi-card-outbound"><div class="title">Peças Expedidas</div><div class="value-main" id="exp-val">0</div><div class="sub">Pedidos: <strong style="color:#fff" id="exp-ped">0</strong></div></div>
     </div>
 
-    <!-- Layout do Corpo Outbound -->
     <div class="outbound-body-grid">
       <div class="center-charts">
         <div class="chart-panel">
           <span class="chart-panel-tag">Peças Integradas por Data</span>
           <div class="chart-container-outbound"><canvas id="chartIntegradas"></canvas></div>
         </div>
-        
         <div class="chart-panel">
           <span class="chart-panel-tag">Peças e Pedidos Faturados por Data</span>
           <div class="chart-container-outbound"><canvas id="chartFaturados"></canvas></div>
         </div>
-
         <div class="chart-panel">
           <span class="chart-panel-tag">Peças Expedidas por Data</span>
           <div class="empty-chart-icon">📉</div>
         </div>
       </div>
-
       <div class="right-chart">
         <span class="chart-panel-tag">Peças por Data e Status</span>
         <div class="empty-chart-icon">📊</div>
@@ -288,12 +235,43 @@
     </div>
   </div>
 
+  <!-- ABA 3: NOTAS EM FLUXO -->
+  <div id="tab-notas" class="tab-content">
+    <div class="header">
+      <span class="header-title">NOTAS EM FLUXO</span>
+      <div class="update-time">Última Atualização: <span id="nf-atualizacao">-</span></div>
+    </div>
+
+    <div class="nf-kpis">
+      <div class="nf-kpi"><span>Total de Notas</span><strong id="nf-total-notas">0</strong></div>
+      <div class="nf-kpi"><span>Total de Peças</span><strong id="nf-total-pecas">0</strong></div>
+    </div>
+
+    <div class="nf-grid">
+      <div class="nf-panel">
+        <div class="section-title">Por Status</div>
+        <table class="nf-table">
+          <thead><tr><th>Status</th><th>Notas</th><th>Peças</th></tr></thead>
+          <tbody id="nf-status-body"></tbody>
+        </table>
+      </div>
+      <div class="nf-panel">
+        <div class="section-title">Notas</div><br>
+        <input type="text" id="nf-busca" class="nf-search" placeholder="Buscar nota ou status..." oninput="filtrarNotas()">
+        <div class="nf-scroll">
+          <table class="nf-table">
+            <thead><tr><th>Nota Fiscal</th><th>Status</th><th>Pedidos</th><th>Peças</th></tr></thead>
+            <tbody id="nf-notas-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script>
     Chart.register(ChartDataLabels);
 
-    function fmt(num) {
-      return Number(num || 0).toLocaleString('pt-BR');
-    }
+    function fmt(num) { return Number(num || 0).toLocaleString('pt-BR'); }
 
     function calcPct(parte, total) {
       if (!total || total == 0) return '0,00%';
@@ -303,13 +281,11 @@
     function inicializarFiltrosData() {
       const dIni = document.getElementById('data-inicio');
       const dFim = document.getElementById('data-fim');
-
       if (!dIni.value || !dFim.value) {
         const hoje = new Date();
         const ano = hoje.getFullYear();
         const mes = String(hoje.getMonth() + 1).padStart(2, '0');
         const ultimoDiaMes = new Date(ano, hoje.getMonth() + 1, 0).getDate();
-
         if (!dIni.value) dIni.value = `${ano}-${mes}-01`;
         if (!dFim.value) dFim.value = `${ano}-${mes}-${String(ultimoDiaMes).padStart(2, '0')}`;
       }
@@ -319,25 +295,20 @@
       document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
       document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
 
-      if (tabName === 'estoque') {
-        document.querySelectorAll('.tab-btn')[0].classList.add('active');
-        document.getElementById('tab-estoque').classList.add('active');
-        carregarEstoque();
-      } else {
-        document.querySelectorAll('.tab-btn')[1].classList.add('active');
-        document.getElementById('tab-outbound').classList.add('active');
-        carregarOutbound();
-      }
+      const idx = { estoque: 0, outbound: 1, notas: 2 }[tabName];
+      document.querySelectorAll('.tab-btn')[idx].classList.add('active');
+      document.getElementById('tab-' + tabName).classList.add('active');
+
+      if (tabName === 'estoque') carregarEstoque();
+      else if (tabName === 'outbound') carregarOutbound();
+      else carregarNotasFluxo();
     }
 
     function renderizarGrafico(canvasId, labels, capacidade, ocupados, livres) {
       const canvas = document.getElementById(canvasId);
       if (!canvas) return;
-
       const ctx = canvas.getContext('2d');
-      if (window[canvasId + '_chart']) {
-        window[canvasId + '_chart'].destroy();
-      }
+      if (window[canvasId + '_chart']) window[canvasId + '_chart'].destroy();
 
       window[canvasId + '_chart'] = new Chart(ctx, {
         type: 'bar',
@@ -354,11 +325,7 @@
           maintainAspectRatio: false,
           plugins: {
             legend: { display: false },
-            datalabels: {
-              color: '#ffffff',
-              font: { weight: 'bold', size: 10 },
-              formatter: val => val > 0 ? fmt(val) : ''
-            }
+            datalabels: { color: '#fff', font: { weight: 'bold', size: 10 }, formatter: val => val > 0 ? fmt(val) : '' }
           },
           scales: {
             x: { stacked: true, ticks: { color: '#FFFFFF', font: { weight: 'bold', size: 10 } }, grid: { display: false } },
@@ -420,7 +387,7 @@
         const categoriasPulmao = pulmaoData.map(g => g.categoria);
 
         renderizarGrafico('chartPecasPulmao', categoriasPulmao, pulmaoData.map(g => Number(g.pecas_capacidade || 0)), pulmaoData.map(g => Number(g.pecas_ocupadas || 0)), pulmaoData.map(g => Number(g.pecas_livres || 0)));
-        renderizarGrafico('chartPosicoesPulmao', categoriasPulmao, pulmaoData.map(g => Number(g.posicoes_capacidade || 0)), pulmaoData.map(g => Number(g.posicoes_livres || 0)));
+        renderizarGrafico('chartPosicoesPulmao', categoriasPulmao, pulmaoData.map(g => Number(g.posicoes_capacidade || 0)), pulmaoData.map(g => Number(g.posicoes_ocupadas || 0)), pulmaoData.map(g => Number(g.posicoes_livres || 0)));
       } catch (err) {
         console.error('Erro ao carregar estoque:', err);
       }
@@ -429,7 +396,6 @@
     async function carregarOutbound() {
       try {
         inicializarFiltrosData();
-
         const dataInicio = document.getElementById('data-inicio').value;
         const dataFim = document.getElementById('data-fim').value;
 
@@ -437,12 +403,10 @@
         const data = await res.json();
         if (!data || data.error) return;
 
-        // Atualização de KPIs no Cabeçalho
         if (data.sla_pct) document.getElementById('out-sla').innerText = data.sla_pct;
         if (data.integrado_vs_fcst) document.getElementById('integ-vs-fcst').innerText = data.integrado_vs_fcst;
         if (data.produzido_vs_fcst) document.getElementById('prod-vs-fcst').innerText = data.produzido_vs_fcst;
 
-        // Valores de Peças
         document.getElementById('fcst-val').innerText   = fmt(data.forecast_pecas);
         document.getElementById('integ-val').innerText  = fmt(data.pecas_integradas);
         document.getElementById('fluxo-val').innerText  = fmt(data.pecas_fluxo);
@@ -451,7 +415,6 @@
         document.getElementById('prod-val').innerText   = fmt(data.pecas_produzidas);
         document.getElementById('exp-val').innerText    = fmt(data.pecas_expedidas);
 
-        // Subtítulos de Pedidos
         document.getElementById('integ-ped').innerText  = fmt(data.pedidos_integradas);
         document.getElementById('fluxo-ped').innerText  = fmt(data.pedidos_fluxo);
         document.getElementById('coleta-ped').innerText = fmt(data.pedidos_coleta);
@@ -459,7 +422,6 @@
         document.getElementById('prod-ped').innerText   = fmt(data.pedidos_produzidas);
         document.getElementById('exp-ped').innerText    = fmt(data.pedidos_expedidas);
 
-        // Gráfico de Peças Integradas por Data
         if (data.pecas_integradas_grafico) {
           const labelsInteg = data.pecas_integradas_grafico.map(i => {
             const dt = String(i.data).split('T')[0].split('-');
@@ -476,33 +438,18 @@
     function renderBarChart(canvasId, labels, dataValores, cor, legendLabel) {
       const canvas = document.getElementById(canvasId);
       if (!canvas) return;
-
       const ctx = canvas.getContext('2d');
       if (window[canvasId + 'Obj']) window[canvasId + 'Obj'].destroy();
 
       window[canvasId + 'Obj'] = new Chart(ctx, {
         type: 'bar',
-        data: {
-          labels: labels.length ? labels : [],
-          datasets: [{
-            label: legendLabel,
-            data: dataValores,
-            backgroundColor: cor,
-            borderRadius: 4
-          }]
-        },
+        data: { labels: labels, datasets: [{ label: legendLabel, data: dataValores, backgroundColor: cor, borderRadius: 4 }] },
         options: {
           responsive: true,
           maintainAspectRatio: false,
           plugins: {
             legend: { display: false },
-            datalabels: {
-              color: '#fff',
-              anchor: 'end',
-              align: 'top',
-              font: { weight: 'bold', size: 10 },
-              formatter: val => val > 0 ? fmt(val) : ''
-            }
+            datalabels: { color: '#fff', anchor: 'end', align: 'top', font: { weight: 'bold', size: 10 }, formatter: val => val > 0 ? fmt(val) : '' }
           },
           scales: {
             x: { ticks: { color: '#888' }, grid: { display: false } },
@@ -512,10 +459,46 @@
       });
     }
 
+    // ===== NOTAS EM FLUXO =====
+    let notasFluxoCache = [];
+
+    async function carregarNotasFluxo() {
+      try {
+        const res = await fetch('/api/notas-fluxo');
+        const data = await res.json();
+        if (!data || data.error) { console.error(data); return; }
+
+        document.getElementById('nf-total-notas').innerText = fmt(data.total_notas);
+        document.getElementById('nf-total-pecas').innerText = fmt(data.total_pecas);
+        document.getElementById('nf-atualizacao').innerText = data.ultima_atualizacao || '-';
+
+        document.getElementById('nf-status-body').innerHTML = (data.por_status || []).map(s =>
+          `<tr><td>${s.status}</td><td>${fmt(s.notas)}</td><td>${fmt(s.pecas)}</td></tr>`
+        ).join('');
+
+        notasFluxoCache = data.notas || [];
+        filtrarNotas();
+      } catch (err) {
+        console.error('Erro ao carregar notas em fluxo:', err);
+      }
+    }
+
+    function filtrarNotas() {
+      const termo = (document.getElementById('nf-busca').value || '').toLowerCase();
+      const lista = notasFluxoCache.filter(n =>
+        String(n.nota_fiscal).toLowerCase().includes(termo) ||
+        String(n.status).toLowerCase().includes(termo)
+      );
+      document.getElementById('nf-notas-body').innerHTML = lista.map(n =>
+        `<tr><td>${n.nota_fiscal}</td><td>${n.status}</td><td>${fmt(n.pedidos)}</td><td>${fmt(n.pecas)}</td></tr>`
+      ).join('');
+    }
+
     carregarEstoque();
     setInterval(() => {
       if (document.getElementById('tab-estoque').classList.contains('active')) carregarEstoque();
       if (document.getElementById('tab-outbound').classList.contains('active')) carregarOutbound();
+      if (document.getElementById('tab-notas').classList.contains('active')) carregarNotasFluxo();
     }, 30000);
   </script>
 </body>
