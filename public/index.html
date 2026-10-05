@@ -563,11 +563,11 @@
     function filtrarNotas() {
       const termo = (document.getElementById('nf-busca').value || '').toLowerCase();
       const lista = notasFluxoCache.filter(n =>
-        [n.nota_fiscal, n.canal, n.destinatario, n.status]
+        [n.nota_fiscal, n.canal, n.destinatário, n.status]
           .some(v => String(v ?? '').toLowerCase().includes(termo))
       );
       document.getElementById('nf-notas-body').innerHTML = lista.map(n =>
-        `<tr><td>${esc(n.nota_fiscal)}</td><td>${esc(n.canal)}</td><td>${esc(n.destinatario)}</td><td>${esc(n.status)}</td><td>${fmt(n.skus)}</td><td>${fmt(n.pedidos)}</td><td>${fmt(n.pecas)}</td></tr>`
+        `<tr><td>${esc(n.nota_fiscal)}</td><td>${esc(n.canal)}</td><td>${esc(n.destinatário)}</td><td>${esc(n.status)}</td><td>${fmt(n.skus)}</td><td>${fmt(n.pedidos)}</td><td>${fmt(n.pecas)}</td></tr>`
       ).join('');
     }
 

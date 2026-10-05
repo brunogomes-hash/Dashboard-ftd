@@ -309,7 +309,7 @@ app.get('/api/notas-fluxo', async (req, res) => {
           "nota_fiscal"::text AS nota_fiscal,
           COALESCE(NULLIF(TRIM("status_operacional"), ''), 'SEM STATUS') AS status,
           MAX("canal") AS canal,
-          MAX("destinatario") AS destinatario,
+          MAX("destinatário") AS destinatário,
           MAX(NULLIF(TRIM("qtde_de_produto"::text), '')::numeric) AS skus,
           COALESCE(SUM("quantidade"), 0) AS pecas,
           COUNT(DISTINCT "pedido_de_venda") AS pedidos
@@ -323,7 +323,7 @@ app.get('/api/notas-fluxo', async (req, res) => {
         SELECT
           nota_fiscal,
           MAX(canal) AS canal,
-          MAX(destinatario) AS destinatario,
+          MAX(destinatário) AS destinatário,
           MAX(skus) AS skus,
           SUM(pecas) AS pecas
         FROM base
@@ -333,7 +333,7 @@ app.get('/api/notas-fluxo', async (req, res) => {
 
     const notas = await pool.query(`
       ${base}
-      SELECT nota_fiscal, status, canal, destinatario, skus, pedidos, pecas
+      SELECT nota_fiscal, status, canal, destinatário, skus, pedidos, pecas
       FROM base
       ORDER BY nota_fiscal DESC
       LIMIT 5000
