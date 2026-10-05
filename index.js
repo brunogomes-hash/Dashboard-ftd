@@ -235,12 +235,42 @@ app.get('/api/outbound', async (req, res) => {
       ORDER BY DATE("processado_em"::timestamp) ASC
     `, [dtInicio, dtFim]);
 
+    // 7. Forecast e % x Forecast (mês de referência = mês da data inicial do filtro, formato AAAAMM)
+    const mesRef = dtInicio.slice(0, 4) + dtInicio.slice(5, 7);
+    let forecastPecas = 0;
+    let integVsFcst = '0,00%';
+    let prodVsFcst = '0,00%';
+    try {
+      const fc = await pool.query(
+        `SELECT COALESCE(SUM("total"), 0) AS forecast
+           FROM "forecast_outbound"
+          WHERE TRIM("mes") = $1`,
+        [mesRef]
+      );
+      forecastPecas = Number(fc.rows[0]?.forecast || 0);
+
+      const pct = await pool.query(
+        `SELECT "integrado_x_forecast_" AS integrado, "produzido_x_forecast_" AS produzido
+           FROM "saida_porcentagem"
+          WHERE UPPER(TRIM("modalidade")) = 'TOTAL'
+            AND LEFT(TRIM("data"), 6) = $1
+          LIMIT 1`,
+        [mesRef]
+      );
+      if (pct.rows[0]) {
+        integVsFcst = (pct.rows[0].integrado || '0,00%').trim();
+        prodVsFcst = (pct.rows[0].produzido || '0,00%').trim();
+      }
+    } catch (e) {
+      console.error('Aviso: erro ao buscar forecast:', e.message);
+    }
+
     const imp = kpisImportados.rows[0] || {};
     const prod = kpisProduzidos.rows[0] || {};
     const exp = kpisExpedidos.rows[0] || {};
 
     const resposta = {
-      forecast_pecas: 0,
+      forecast_pecas: forecastPecas,
       pecas_integradas: Number(imp.total_integradas || 0),
       pedidos_integradas: Number(imp.pedidos_integrados || 0),
       pecas_fluxo: Number(imp.total_fluxo || 0),
@@ -257,8 +287,8 @@ app.get('/api/outbound', async (req, res) => {
       pecas_faturadas_grafico: graficoFaturados.rows || [],
       pecas_expedidas_grafico: graficoExpedidas.rows || [],
       sla_pct: '100,00%',
-      integrado_vs_fcst: '0,00%',
-      produzido_vs_fcst: '0,00%',
+      integrado_vs_fcst: integVsFcst,
+      produzido_vs_fcst: prodVsFcst,
       ultima_atualizacao: new Date().toLocaleString('pt-BR')
     };
 
