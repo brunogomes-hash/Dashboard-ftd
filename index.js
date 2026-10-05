@@ -208,6 +208,33 @@ app.get('/api/outbound', async (req, res) => {
       ORDER BY DATE("importado_em") ASC
     `, [dtInicio, dtFim]);
 
+    // 5. Gráfico: Peças e Notas Faturadas por Data (via conferido_em)
+    const graficoFaturados = await pool.query(`
+      SELECT 
+        DATE("conferido_em"::timestamp) AS data,
+        COALESCE(SUM("quantidade"), 0) AS total_pecas,
+        COUNT(DISTINCT "nota_fiscal") AS total_notas
+      FROM "itens"
+      WHERE "conferido_em"::timestamp >= $1::timestamp 
+        AND "conferido_em"::timestamp <= $2::timestamp
+        AND COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
+      GROUP BY DATE("conferido_em"::timestamp)
+      ORDER BY DATE("conferido_em"::timestamp) ASC
+    `, [dtInicio, dtFim]);
+
+    // 6. Gráfico: Peças Expedidas por Data (via processado_em)
+    const graficoExpedidas = await pool.query(`
+      SELECT 
+        DATE("processado_em"::timestamp) AS data,
+        COALESCE(SUM("quantidade"), 0) AS total_pecas
+      FROM "itens"
+      WHERE "processado_em"::timestamp >= $1::timestamp 
+        AND "processado_em"::timestamp <= $2::timestamp
+        AND COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
+      GROUP BY DATE("processado_em"::timestamp)
+      ORDER BY DATE("processado_em"::timestamp) ASC
+    `, [dtInicio, dtFim]);
+
     const imp = kpisImportados.rows[0] || {};
     const prod = kpisProduzidos.rows[0] || {};
     const exp = kpisExpedidos.rows[0] || {};
@@ -227,6 +254,8 @@ app.get('/api/outbound', async (req, res) => {
       pecas_expedidas: Number(exp.total_expedidas || 0),
       pedidos_expedidas: Number(exp.pedidos_expedidos || 0),
       pecas_integradas_grafico: graficoIntegradas.rows || [],
+      pecas_faturadas_grafico: graficoFaturados.rows || [],
+      pecas_expedidas_grafico: graficoExpedidas.rows || [],
       sla_pct: '100,00%',
       integrado_vs_fcst: '0,00%',
       produzido_vs_fcst: '0,00%',

@@ -225,7 +225,7 @@
         </div>
         <div class="chart-panel">
           <span class="chart-panel-tag">Peças Expedidas por Data</span>
-          <div class="empty-chart-icon">📉</div>
+          <div class="chart-container-outbound"><canvas id="chartExpedidas"></canvas></div>
         </div>
       </div>
       <div class="right-chart">
@@ -430,9 +430,61 @@
           const valoresInteg = data.pecas_integradas_grafico.map(i => Number(i.total_pecas || 0));
           renderBarChart('chartIntegradas', labelsInteg, valoresInteg, '#45a29e', 'Peças Integradas');
         }
+
+        // Peças e Notas Faturadas por Data (conferido_em)
+        const fat = data.pecas_faturadas_grafico || [];
+        renderLineChart('chartFaturados', fat.map(i => labelData(i.data)),
+          fat.map(i => Number(i.total_pecas || 0)), fat.map(i => Number(i.total_notas || 0)));
+
+        // Peças Expedidas por Data (processado_em)
+        const expd = data.pecas_expedidas_grafico || [];
+        renderBarChart('chartExpedidas', expd.map(i => labelData(i.data)),
+          expd.map(i => Number(i.total_pecas || 0)), '#3B82F6', 'Quantidade');
       } catch (err) {
         console.error('Erro ao carregar outbound:', err);
       }
+    }
+
+    function labelData(d) {
+      const dt = String(d).split('T')[0].split('-');
+      return `${dt[2]}/${dt[1]}`;
+    }
+
+    function renderLineChart(canvasId, labels, pecas, notas) {
+      const canvas = document.getElementById(canvasId);
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (window[canvasId + 'Obj']) window[canvasId + 'Obj'].destroy();
+
+      window[canvasId + 'Obj'] = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [
+            { label: 'Quantidade', data: pecas, borderColor: '#3B82F6', backgroundColor: '#3B82F6', borderWidth: 1.5, pointRadius: 2, tension: 0, yAxisID: 'y' },
+            { label: 'Nota Fiscal', data: notas, borderColor: '#F59E0B', backgroundColor: '#F59E0B', borderWidth: 2, pointRadius: 2, tension: 0, yAxisID: 'y1', datalabels: { display: false } }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: true, labels: { color: '#888', boxWidth: 20, font: { size: 10 } } },
+            datalabels: {
+              color: '#fff',
+              anchor: 'end',
+              align: 'top',
+              font: { weight: 'bold', size: 10 },
+              formatter: val => val > 0 ? fmt(val) : ''
+            }
+          },
+          scales: {
+            x: { ticks: { color: '#fff', font: { weight: 'bold', size: 9 } }, grid: { display: false } },
+            y: { ticks: { color: '#888' }, grid: { color: '#222' } },
+            y1: { position: 'right', ticks: { color: '#F59E0B' }, grid: { display: false } }
+          }
+        }
+      });
     }
 
     function renderBarChart(canvasId, labels, dataValores, cor, legendLabel) {
