@@ -1,4 +1,40 @@
-// ROUTE 2: OUTBOUND GERAL (COM FLUXO, COLETA E TRATATIVA CORRIGIDOS)
+const express = require('express');
+const path = require('path');
+const fs = require('fs');
+const { Pool } = require('pg');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// ===== CONEXÃO COM O NEON =====
+// A string de conexão deve estar na variável de ambiente DATABASE_URL (Render > Environment)
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }
+});
+
+// ===== ARQUIVOS DO SITE =====
+// Serve o index.html da pasta "public" se existir; senão, da raiz do projeto
+const pastaSite = fs.existsSync(path.join(__dirname, 'public', 'index.html'))
+  ? path.join(__dirname, 'public')
+  : __dirname;
+
+app.use(express.static(pastaSite));
+app.get('/', (req, res) => res.sendFile(path.join(pastaSite, 'index.html')));
+
+// ROUTE 1: ESTOQUE (TEMPORÁRIA)
+// Devolve zeros até a gente refazer essa rota com as tabelas do estoque
+app.get('/api/dashboard', async (req, res) => {
+  res.json({
+    picking: { total_pecas: 0, total_skus: 0, capacidade: 0, ocupadas: 0, vazias: 0 },
+    pulmao:  { total_pecas: 0, total_skus: 0, capacidade: 0, ocupadas: 0, vazias: 0 },
+    gerais:  { total_estoque: 0, total_skus: 0, total_posicoes: 0, posicoes_ocupadas: 0, posicoes_vazias: 0 },
+    graficos: [],
+    ultima_atualizacao: new Date().toLocaleString('pt-BR')
+  });
+});
+
+// ROUTE 2: OUTBOUND GERAL
 app.get('/api/outbound', async (req, res) => {
   try {
     const { data_inicio, data_fim } = req.query;
@@ -16,20 +52,16 @@ app.get('/api/outbound', async (req, res) => {
       dtFim = `${ano}-${mes}-${String(ultimoDia).padStart(2, '0')} 23:59:59`;
     }
 
-    // 1. Integradas, Em Fluxo, Em Coleta e Em Tratativa
     const kpisImportados = await pool.query(`
       SELECT 
-        -- Total Integradas
         COALESCE(SUM("quantidade"), 0) AS total_integradas,
         COUNT(DISTINCT "pedido_de_venda") AS pedidos_integrados,
 
-        -- Em Fluxo (Importado, Separação, Onda, Conferência)
         COALESCE(SUM(
           CASE WHEN "status_operacional" ILIKE '%importado%'
                  OR "status_operacional" ILIKE '%separa%'
                  OR "status_operacional" ILIKE '%onda%'
-                 OR "status_operacional" ILIKE '%confer% '
-                 OR "status_operacional" ILIKE '%em conferência%'
+                 OR "status_operacional" ILIKE '%confer%'
                THEN "quantidade" ELSE 0 END
         ), 0) AS total_fluxo,
 
@@ -41,7 +73,6 @@ app.get('/api/outbound', async (req, res) => {
                THEN "pedido_de_venda" END
         ) AS pedidos_fluxo,
 
-        -- Em Coleta (Aguardando Coleta / Coletando / Pronto para Expedir)
         COALESCE(SUM(
           CASE WHEN "status_operacional" ILIKE '%coleta%' 
                  OR "status_operacional" ILIKE '%expedi%'
@@ -54,7 +85,6 @@ app.get('/api/outbound', async (req, res) => {
                THEN "pedido_de_venda" END
         ) AS pedidos_coleta,
 
-        -- Em Tratativa (Retenção)
         COALESCE(SUM(
           CASE WHEN "status_da_nota_fiscal" ILIKE '%RETEN%'
                  OR "status_operacional" ILIKE '%RETEN%'
@@ -74,7 +104,6 @@ app.get('/api/outbound', async (req, res) => {
         AND "importado_em"::timestamp <= $2::timestamp
     `, [dtInicio, dtFim]);
 
-    // 2. Produzidas (via conferido_em)
     const kpisProduzidos = await pool.query(`
       SELECT 
         COALESCE(SUM("quantidade"), 0) AS total_produzidas,
@@ -84,7 +113,6 @@ app.get('/api/outbound', async (req, res) => {
         AND "conferido_em"::timestamp <= $2::timestamp
     `, [dtInicio, dtFim]);
 
-    // 3. Expedidas (via pesado_em)
     const kpisExpedidos = await pool.query(`
       SELECT 
         COALESCE(SUM("quantidade"), 0) AS total_expedidas,
@@ -94,7 +122,6 @@ app.get('/api/outbound', async (req, res) => {
         AND "pesado_em"::timestamp <= $2::timestamp
     `, [dtInicio, dtFim]);
 
-    // 4. Gráfico de Peças Integradas por Data
     const graficoIntegradas = await pool.query(`
       SELECT 
         DATE("importado_em") AS data,
@@ -114,22 +141,16 @@ app.get('/api/outbound', async (req, res) => {
       forecast_pecas: 0,
       pecas_integradas: Number(imp.total_integradas || 0),
       pedidos_integradas: Number(imp.pedidos_integrados || 0),
-
       pecas_fluxo: Number(imp.total_fluxo || 0),
       pedidos_fluxo: Number(imp.pedidos_fluxo || 0),
-
       em_coleta: Number(imp.total_coleta || 0),
       pedidos_coleta: Number(imp.pedidos_coleta || 0),
-
       em_tratativa: Number(imp.total_tratativa || 0),
       pedidos_tratativa: Number(imp.pedidos_tratativa || 0),
-
       pecas_produzidas: Number(prod.total_produzidas || 0),
       pedidos_produzidas: Number(prod.pedidos_produzidos || 0),
-
       pecas_expedidas: Number(exp.total_expedidas || 0),
       pedidos_expedidas: Number(exp.pedidos_expedidos || 0),
-
       pecas_integradas_grafico: graficoIntegradas.rows || [],
       sla_pct: '100,00%',
       integrado_vs_fcst: '0,00%',
@@ -140,4 +161,65 @@ app.get('/api/outbound', async (req, res) => {
     console.error('Erro no Outbound:', err);
     res.status(500).json({ error: 'Erro no Outbound', detalhe: err.message });
   }
+});
+
+// ROUTE 3: NOTAS EM FLUXO
+// Exclui: Expedido, Cancelado, Aguardando expedição
+app.get('/api/notas-fluxo', async (req, res) => {
+  try {
+    const filtroStatus = `
+      "nota_fiscal" IS NOT NULL
+      AND TRIM("nota_fiscal"::text) <> ''
+      AND COALESCE("status_operacional", '') NOT ILIKE ALL (
+        ARRAY['%expedido%', '%cancelado%', '%aguardando exped%']
+      )
+    `;
+
+    const notas = await pool.query(`
+      SELECT
+        "nota_fiscal" AS nota_fiscal,
+        COALESCE("status_operacional", 'SEM STATUS') AS status,
+        COALESCE(SUM("quantidade"), 0) AS pecas,
+        COUNT(DISTINCT "pedido_de_venda") AS pedidos
+      FROM "itens"
+      WHERE ${filtroStatus}
+      GROUP BY "nota_fiscal", COALESCE("status_operacional", 'SEM STATUS')
+      ORDER BY "nota_fiscal" DESC
+      LIMIT 2000
+    `);
+
+    const porStatus = await pool.query(`
+      SELECT
+        COALESCE("status_operacional", 'SEM STATUS') AS status,
+        COUNT(DISTINCT "nota_fiscal") AS notas,
+        COALESCE(SUM("quantidade"), 0) AS pecas
+      FROM "itens"
+      WHERE ${filtroStatus}
+      GROUP BY COALESCE("status_operacional", 'SEM STATUS')
+      ORDER BY notas DESC
+    `);
+
+    const totais = await pool.query(`
+      SELECT
+        COUNT(DISTINCT "nota_fiscal") AS total_notas,
+        COALESCE(SUM("quantidade"), 0) AS total_pecas
+      FROM "itens"
+      WHERE ${filtroStatus}
+    `);
+
+    res.json({
+      total_notas: Number(totais.rows[0]?.total_notas || 0),
+      total_pecas: Number(totais.rows[0]?.total_pecas || 0),
+      por_status: porStatus.rows,
+      notas: notas.rows,
+      ultima_atualizacao: new Date().toLocaleString('pt-BR')
+    });
+  } catch (err) {
+    console.error('Erro Notas Fluxo:', err);
+    res.status(500).json({ error: 'Erro Notas Fluxo', detalhe: err.message });
+  }
+});
+
+app.listen(PORT, () => {
+  console.log(`Servidor rodando na porta ${PORT}`);
 });
