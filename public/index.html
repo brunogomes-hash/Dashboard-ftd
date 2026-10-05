@@ -59,13 +59,13 @@
     .kpi-card-outbound .title { font-size: 12px; font-weight: bold; color: #e0e0e0; }
     .kpi-card-outbound .value-main { font-size: 15px; font-weight: bold; color: #45a29e; }
     .kpi-card-outbound .sub { font-size: 10px; color: #aaa; }
-    .outbound-body-grid { display: grid; grid-template-columns: 1fr 300px; gap: 8px; }
-    .center-charts { display: flex; flex-direction: column; gap: 8px; }
-    .chart-panel { background: #181818; border: 1px solid #2a2a2a; border-radius: 6px; padding: 8px; height: 180px; position: relative; }
+    .outbound-body-grid { display: grid; grid-template-columns: 1fr 300px; grid-template-rows: minmax(0, 1fr); gap: 8px; height: calc(100vh - 250px); min-height: 560px; }
+    .center-charts { display: flex; flex-direction: column; gap: 8px; height: 100%; min-height: 0; }
+    .chart-panel { background: #181818; border: 1px solid #2a2a2a; border-radius: 6px; padding: 8px; flex: 1 1 0; min-height: 0; position: relative; }
     .chart-panel-tag { position: absolute; top: 8px; left: 8px; background: #eaeaea; color: #000; font-size: 10px; font-weight: bold; padding: 2px 8px; border-radius: 10px; z-index: 2; }
-    .right-chart { background: #181818; border: 1px solid #2a2a2a; border-radius: 6px; padding: 8px; position: relative; height: 556px; }
+    .right-chart { background: #181818; border: 1px solid #2a2a2a; border-radius: 6px; padding: 8px; position: relative; height: 100%; min-height: 0; }
     .empty-chart-icon { display: flex; align-items: center; justify-content: center; height: 100%; color: #444; font-size: 32px; }
-    .chart-container-outbound { position: relative; height: 100%; width: 100%; padding-top: 18px; }
+    .chart-container-outbound { position: relative; height: 100%; width: 100%; padding-top: 22px; }
 
     /* NOTAS EM FLUXO */
     .nf-kpis { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
@@ -468,20 +468,23 @@
         options: {
           responsive: true,
           maintainAspectRatio: false,
+          layout: { padding: { top: 6, right: 10 } },
           plugins: {
-            legend: { display: true, labels: { color: '#888', boxWidth: 20, font: { size: 10 } } },
+            legend: { display: true, position: 'top', align: 'end', labels: { color: '#aaa', boxWidth: 16, boxHeight: 8, font: { size: 11 } } },
             datalabels: {
               color: '#fff',
               anchor: 'end',
               align: 'top',
-              font: { weight: 'bold', size: 10 },
+              offset: 2,
+              clip: false,
+              font: { weight: 'bold', size: 11 },
               formatter: val => val > 0 ? fmt(val) : ''
             }
           },
           scales: {
-            x: { ticks: { color: '#fff', font: { weight: 'bold', size: 9 } }, grid: { display: false } },
-            y: { ticks: { color: '#888' }, grid: { color: '#222' } },
-            y1: { position: 'right', ticks: { color: '#F59E0B' }, grid: { display: false } }
+            x: { offset: true, ticks: { color: '#aaa', font: { size: 11 } }, grid: { display: false } },
+            y: { beginAtZero: true, grace: '15%', ticks: { color: '#888', font: { size: 11 } }, grid: { color: '#222' } },
+            y1: { beginAtZero: true, grace: '15%', position: 'right', ticks: { color: '#F59E0B', font: { size: 11 } }, grid: { display: false } }
           }
         }
       });
@@ -499,13 +502,14 @@
         options: {
           responsive: true,
           maintainAspectRatio: false,
+          layout: { padding: { top: 22, right: 10 } },
           plugins: {
             legend: { display: false },
-            datalabels: { color: '#fff', anchor: 'end', align: 'top', font: { weight: 'bold', size: 10 }, formatter: val => val > 0 ? fmt(val) : '' }
+            datalabels: { color: '#fff', anchor: 'end', align: 'top', clip: false, font: { weight: 'bold', size: 11 }, formatter: val => val > 0 ? fmt(val) : '' }
           },
           scales: {
-            x: { ticks: { color: '#888' }, grid: { display: false } },
-            y: { ticks: { color: '#888' }, grid: { color: '#222' } }
+            x: { ticks: { color: '#aaa', font: { size: 11 } }, grid: { display: false } },
+            y: { beginAtZero: true, grace: '15%', ticks: { color: '#888', font: { size: 11 } }, grid: { color: '#222' } }
           }
         }
       });
