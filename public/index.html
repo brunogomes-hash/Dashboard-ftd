@@ -378,6 +378,7 @@
             <input type="date" class="date-input date-ini" onchange="aoMudarData()">
             <span>até</span>
             <input type="date" class="date-input date-fim" onchange="aoMudarData()">
+            <button class="ctrl-btn" style="padding:3px 8px" title="Voltar ao período padrão (mês passado até o fim deste mês)" onclick="restaurarDataPadrao()">↺</button>
           </div>
         </div>
 
@@ -424,6 +425,7 @@
             <input type="date" class="date-input date-ini" onchange="aoMudarData()">
             <span>até</span>
             <input type="date" class="date-input date-fim" onchange="aoMudarData()">
+            <button class="ctrl-btn" style="padding:3px 8px" title="Voltar ao período padrão (mês passado até o fim deste mês)" onclick="restaurarDataPadrao()">↺</button>
           </div>
         </div>
 
@@ -477,6 +479,7 @@
             <input type="date" class="date-input date-ini" onchange="aoMudarData()">
             <span>até</span>
             <input type="date" class="date-input date-fim" onchange="aoMudarData()">
+            <button class="ctrl-btn" style="padding:3px 8px" title="Voltar ao período padrão (mês passado até o fim deste mês)" onclick="restaurarDataPadrao()">↺</button>
           </div>
         </div>
 
@@ -503,13 +506,35 @@
         </div>`;
     }
 
-    function montarAbasOutbound() {
+    // Período padrão: dia 1 do mês passado até o último dia do mês atual
+    function periodoPadrao() {
       const hoje = new Date();
-      const ano = hoje.getFullYear();
-      const mes = String(hoje.getMonth() + 1).padStart(2, '0');
-      const ultimo = new Date(ano, hoje.getMonth() + 1, 0).getDate();
-      dataInicio = `${ano}-${mes}-01`;
-      dataFim = `${ano}-${mes}-${String(ultimo).padStart(2, '0')}`;
+      const ini = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
+      const fim = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0);
+      const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      return { ini: iso(ini), fim: iso(fim) };
+    }
+
+    // Volta ao padrão e solta a data fixada
+    function restaurarDataPadrao() {
+      try { localStorage.removeItem('dash_periodo'); } catch (e) {}
+      const p = periodoPadrao();
+      dataInicio = p.ini; dataFim = p.fim;
+      document.querySelectorAll('.date-ini').forEach(i => i.value = dataInicio);
+      document.querySelectorAll('.date-fim').forEach(i => i.value = dataFim);
+      carregarAbaAtiva();
+    }
+
+    function montarAbasOutbound() {
+      const padrao = periodoPadrao();
+      let fixado = null;
+      try { fixado = JSON.parse(localStorage.getItem('dash_periodo') || 'null'); } catch (e) {}
+      const ok = d => /^\d{4}-\d{2}-\d{2}$/.test(String(d || ''));
+      if (fixado && ok(fixado.ini) && ok(fixado.fim) && fixado.ini <= fixado.fim) {
+        dataInicio = fixado.ini; dataFim = fixado.fim;
+      } else {
+        dataInicio = padrao.ini; dataFim = padrao.fim;
+      }
 
       OUTBOUND_TABS.forEach(cfg => {
         document.getElementById('tab-' + cfg.key).innerHTML = outboundTemplate(cfg.p, cfg.titulo);
@@ -530,6 +555,7 @@
       if (!ini || !fim || !ini.value || !fim.value) return;
       dataInicio = ini.value;
       dataFim = fim.value;
+      try { localStorage.setItem('dash_periodo', JSON.stringify({ ini: dataInicio, fim: dataFim })); } catch (e) {}
       document.querySelectorAll('.date-ini').forEach(i => i.value = dataInicio);
       document.querySelectorAll('.date-fim').forEach(i => i.value = dataFim);
       carregarAbaAtiva();
@@ -707,10 +733,38 @@
       });
     }
 
+    // ===== MEMÓRIA: guarda o último resultado bom de cada aba/período (navegador) =====
+    const memoriaFront = {};
+    function lerMemoria(chave) {
+      if (memoriaFront[chave] !== undefined) return memoriaFront[chave];
+      try {
+        const t = localStorage.getItem('dash_mem:' + chave);
+        if (t) { memoriaFront[chave] = JSON.parse(t); return memoriaFront[chave]; }
+      } catch (e) {}
+      return null;
+    }
+    function gravarMemoria(chave, valor) {
+      memoriaFront[chave] = valor;
+      try { localStorage.setItem('dash_mem:' + chave, JSON.stringify(valor)); } catch (e) {}
+    }
+    // Busca o JSON; se falhar ou vier com erro, devolve o último resultado bom da mesma URL
+    async function buscarJSON(url) {
+      try {
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data && !data.error) { gravarMemoria('url:' + url, data); return data; }
+      } catch (e) { console.error('Falha ao buscar', url, e); }
+      return lerMemoria('url:' + url);
+    }
+    // Para blocos que às vezes chegam vazios (ex.: gráficos do Estoque)
+    function listaComMemoria(chave, lista) {
+      if (Array.isArray(lista) && lista.length) { gravarMemoria('lista:' + chave, lista); return lista; }
+      return lerMemoria('lista:' + chave) || [];
+    }
+
     async function carregarEstoque() {
       try {
-        const res = await fetch('/api/dashboard');
-        const data = await res.json();
+        const data = await buscarJSON('/api/dashboard');
         if (!data || data.error) return;
 
         const pickPecas = Number(data.picking?.total_pecas || 0);
@@ -758,9 +812,9 @@
         const categoriasPulmao = pulmaoData.map(g => g.categoria);
 
         renderizarGrafico('chartPecasPulmao', categoriasPulmao, pulmaoData.map(g => Number(g.pecas_capacidade || 0)), pulmaoData.map(g => Number(g.pecas_ocupadas || 0)), pulmaoData.map(g => Number(g.pecas_livres || 0)));
-        const fora = data.fora_sistema || [];
+        const fora = listaComMemoria('estoque-fora', data.fora_sistema);
         renderHBarChart('chartForaSistema', fora.map(f => f.status), fora.map(f => Number(f.qtd || 0)), '#1E88E5');
-        const deps = data.depositos || [];
+        const deps = listaComMemoria('estoque-deps', data.depositos);
         renderHBarChart('chartDepositos', deps.map(d => d.area), deps.map(d => Number(d.pecas || 0)), '#1E88E5');
 
         renderizarGrafico('chartPosicoesPulmao', categoriasPulmao, pulmaoData.map(g => Number(g.posicoes_capacidade || 0)), pulmaoData.map(g => Number(g.posicoes_ocupadas || 0)), pulmaoData.map(g => Number(g.posicoes_livres || 0)));
@@ -774,8 +828,7 @@
         const p = cfg.p;
         const $ = id => document.getElementById(p + id);
 
-        const res = await fetch(`/api/outbound?data_inicio=${dataInicio}&data_fim=${dataFim}&canal=${cfg.canal}`);
-        const data = await res.json();
+        const data = await buscarJSON(`/api/outbound?data_inicio=${dataInicio}&data_fim=${dataFim}&canal=${cfg.canal}`);
         if (!data || data.error) return;
 
         $('atualizacao').innerText = data.ultima_atualizacao || '-';
@@ -862,8 +915,7 @@
       try {
         const p = cfg.p;
         const $ = id => document.getElementById(p + id);
-        const res = await fetch(`/api/expedicao?data_inicio=${dataInicio}&data_fim=${dataFim}`);
-        const data = await res.json();
+        const data = await buscarJSON(`/api/expedicao?data_inicio=${dataInicio}&data_fim=${dataFim}`);
         if (!data || data.error) return;
 
         $('atualizacao').innerText = data.ultima_atualizacao || '-';
@@ -887,8 +939,7 @@
       try {
         const p = cfg.p;
         const $ = id => document.getElementById(p + id);
-        const res = await fetch(`/api/inbound?tipo=${cfg.tipo}&data_inicio=${dataInicio}&data_fim=${dataFim}`);
-        const data = await res.json();
+        const data = await buscarJSON(`/api/inbound?tipo=${cfg.tipo}&data_inicio=${dataInicio}&data_fim=${dataFim}`);
         if (!data || data.error) return;
 
         $('sla').innerText = data.sla_24h || '-';
@@ -1100,8 +1151,7 @@
 
     async function carregarNotasFluxo() {
       try {
-        const res = await fetch('/api/notas-fluxo');
-        const data = await res.json();
+        const data = await buscarJSON('/api/notas-fluxo');
         if (!data || data.error) {
           console.error(data);
           const msg = data && (data.detalhe || data.error) ? (data.detalhe || data.error) : 'Resposta inválida do servidor';

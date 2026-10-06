@@ -330,6 +330,29 @@ app.get('/api/dashboard', async (req, res) => {
       ultima_atualizacao: await ultimaAtualizacao()
     };
 
+    // Memória por bloco: se algum pedaço veio vazio (consulta falhou ou tabela em recarga),
+    // reaproveita o último valor bom em vez de apagar o gráfico/KPI.
+    const anterior = await lerCache('estoque');
+    if (anterior && anterior.resposta) {
+      const a = anterior.resposta;
+      let reaproveitou = false;
+      if (!resposta.depositos.length && (a.depositos || []).length) { resposta.depositos = a.depositos; reaproveitou = true; }
+      if (!resposta.fora_sistema.length && (a.fora_sistema || []).length) { resposta.fora_sistema = a.fora_sistema; reaproveitou = true; }
+      ['picking', 'pulmao'].forEach(k => {
+        if (resposta[k].total_pecas == null && a[k] && a[k].total_pecas != null) {
+          resposta[k].total_pecas = a[k].total_pecas;
+          resposta[k].total_skus = a[k].total_skus;
+          reaproveitou = true;
+        }
+      });
+      if (!resposta.gerais.total_estoque && a.gerais && a.gerais.total_estoque > 0) {
+        resposta.gerais.total_estoque = a.gerais.total_estoque;
+        resposta.gerais.total_skus = a.gerais.total_skus;
+        reaproveitou = true;
+      }
+      if (reaproveitou) resposta.dados_parciais_anteriores = true;
+    }
+
     await responderComCache(res, 'estoque', resposta,
       d => d.gerais.total_posicoes === 0 && d.gerais.total_estoque === 0);
   } catch (err) {
