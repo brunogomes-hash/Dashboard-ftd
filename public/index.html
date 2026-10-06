@@ -127,10 +127,6 @@
     .nf-table th { position: sticky; top: 0; background: #222; color: #fff; text-align: left; padding: 6px 8px; }
     .nf-table td { padding: 5px 8px; border-bottom: 1px solid #262626; }
     .nf-search { background: #000; color: #fff; border: 1px solid #444; border-radius: 4px; padding: 5px 8px; font-size: 12px; margin-bottom: 8px; width: 250px; }
-
-    /* GRÁFICOS MAIORES: coluna lateral mais larga e altura mínima maior (a página rola se a tela for menor) */
-    .outbound-body-grid { grid-template-columns: 1fr 380px; min-height: 820px; }
-    .chart-container-outbound { padding-top: 26px; }
   </style>
 </head>
 <body>
@@ -163,9 +159,13 @@
 
   <!-- ABA 1: ESTOQUE -->
   <div id="tab-estoque" class="tab-content">
-    <div class="header header-logos">
-      <div class="logos-box"><div class="logo-box-img luft"><img class="logo-luft" alt="Luft Logistics"></div><div class="logo-box-img ftd"><img class="logo-ftd" alt="FTD Educação"></div><span class="header-title" style="margin-left:10px">ESTOQUE - FTD FILIAL</span></div>
-      <div>
+    <div class="outbound-header">
+      <div class="logos-box">
+        <div class="logo-box-img luft"><img class="logo-luft" alt="Luft Logistics"></div>
+        <div class="logo-box-img ftd"><img class="logo-ftd" alt="FTD Educação"></div>
+      </div>
+      <div class="main-title-outbound">ESTOQUE - FTD FILIAL</div>
+      <div style="padding:8px 0">
         <div class="kpi-top-container">
           <div class="kpi-top"><span>Total Estoque</span><strong id="top-estoque">-</strong></div>
           <div class="kpi-top"><span>Total SKUs</span><strong id="top-skus">-</strong></div>
@@ -277,9 +277,14 @@
 
   <!-- ABA 3: RESUMO DE NF -->
   <div id="tab-notas" class="tab-content">
-    <div class="header">
-      <span class="header-title">RESUMO DE NF</span>
-      <div class="update-time">Última Atualização: <span id="nf-atualizacao">-</span></div>
+    <div class="outbound-header">
+      <div class="logos-box">
+        <div class="logo-box-img luft"><img class="logo-luft" alt="Luft Logistics"></div>
+        <div class="logo-box-img ftd"><img class="logo-ftd" alt="FTD Educação"></div>
+        <div class="update-time" style="text-align:left;margin:0 0 0 6px">Última Atualização:<br><span id="nf-atualizacao">-</span></div>
+      </div>
+      <div class="main-title-outbound">RESUMO DE NF</div>
+      <div style="min-width:220px"></div>
     </div>
 
     <div class="nf-kpis">
@@ -329,11 +334,6 @@
     }
 
     Chart.register(ChartDataLabels);
-    Chart.defaults.interaction.mode = 'index';
-    Chart.defaults.interaction.intersect = false;
-    Chart.defaults.plugins.tooltip.padding = 10;
-    Chart.defaults.plugins.tooltip.titleFont = { size: 14, weight: 'bold' };
-    Chart.defaults.plugins.tooltip.bodyFont = { size: 13 };
 
     function fmt(num) { return Number(num || 0).toLocaleString('pt-BR'); }
     function fmtN(num) { return num === null || num === undefined ? '-' : fmt(num); }
@@ -369,8 +369,6 @@
             <div class="logo-box-img ftd"><img class="logo-ftd" alt="FTD Educação"></div>
             <div class="header-kpis-group">
               <div class="header-kpi-card" style="min-width:130px"><span>% SLA 24h</span><strong id="${p}sla">-</strong></div>
-              ${p === 'rec-' ? `<div class="header-kpi-card" style="min-width:110px"><span>Privado</span><strong id="${p}privado">-</strong></div>
-              <div class="header-kpi-card" style="min-width:110px"><span>Prefeitura</span><strong id="${p}prefeitura">-</strong></div>` : ''}
             </div>
             <div class="update-time" style="text-align:left;margin:0 0 0 6px">Última Atualização:<br><span id="${p}atualizacao">-</span></div>
           </div>
@@ -380,6 +378,7 @@
             <input type="date" class="date-input date-ini" onchange="aoMudarData()">
             <span>até</span>
             <input type="date" class="date-input date-fim" onchange="aoMudarData()">
+            <button class="ctrl-btn" style="padding:3px 8px" title="Voltar ao período padrão (mês passado até o fim deste mês)" onclick="restaurarDataPadrao()">↺</button>
           </div>
         </div>
 
@@ -426,6 +425,7 @@
             <input type="date" class="date-input date-ini" onchange="aoMudarData()">
             <span>até</span>
             <input type="date" class="date-input date-fim" onchange="aoMudarData()">
+            <button class="ctrl-btn" style="padding:3px 8px" title="Voltar ao período padrão (mês passado até o fim deste mês)" onclick="restaurarDataPadrao()">↺</button>
           </div>
         </div>
 
@@ -479,6 +479,7 @@
             <input type="date" class="date-input date-ini" onchange="aoMudarData()">
             <span>até</span>
             <input type="date" class="date-input date-fim" onchange="aoMudarData()">
+            <button class="ctrl-btn" style="padding:3px 8px" title="Voltar ao período padrão (mês passado até o fim deste mês)" onclick="restaurarDataPadrao()">↺</button>
           </div>
         </div>
 
@@ -505,13 +506,35 @@
         </div>`;
     }
 
-    function montarAbasOutbound() {
+    // Período padrão: dia 1 do mês passado até o último dia do mês atual
+    function periodoPadrao() {
       const hoje = new Date();
-      const ano = hoje.getFullYear();
-      const mes = String(hoje.getMonth() + 1).padStart(2, '0');
-      const ultimo = new Date(ano, hoje.getMonth() + 1, 0).getDate();
-      dataInicio = `${ano}-${mes}-01`;
-      dataFim = `${ano}-${mes}-${String(ultimo).padStart(2, '0')}`;
+      const ini = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
+      const fim = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0);
+      const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      return { ini: iso(ini), fim: iso(fim) };
+    }
+
+    // Volta ao padrão e solta a data fixada
+    function restaurarDataPadrao() {
+      try { localStorage.removeItem('dash_periodo'); } catch (e) {}
+      const p = periodoPadrao();
+      dataInicio = p.ini; dataFim = p.fim;
+      document.querySelectorAll('.date-ini').forEach(i => i.value = dataInicio);
+      document.querySelectorAll('.date-fim').forEach(i => i.value = dataFim);
+      carregarAbaAtiva();
+    }
+
+    function montarAbasOutbound() {
+      const padrao = periodoPadrao();
+      let fixado = null;
+      try { fixado = JSON.parse(localStorage.getItem('dash_periodo') || 'null'); } catch (e) {}
+      const ok = d => /^\d{4}-\d{2}-\d{2}$/.test(String(d || ''));
+      if (fixado && ok(fixado.ini) && ok(fixado.fim) && fixado.ini <= fixado.fim) {
+        dataInicio = fixado.ini; dataFim = fixado.fim;
+      } else {
+        dataInicio = padrao.ini; dataFim = padrao.fim;
+      }
 
       OUTBOUND_TABS.forEach(cfg => {
         document.getElementById('tab-' + cfg.key).innerHTML = outboundTemplate(cfg.p, cfg.titulo);
@@ -532,6 +555,7 @@
       if (!ini || !fim || !ini.value || !fim.value) return;
       dataInicio = ini.value;
       dataFim = fim.value;
+      try { localStorage.setItem('dash_periodo', JSON.stringify({ ini: dataInicio, fim: dataFim })); } catch (e) {}
       document.querySelectorAll('.date-ini').forEach(i => i.value = dataInicio);
       document.querySelectorAll('.date-fim').forEach(i => i.value = dataFim);
       carregarAbaAtiva();
@@ -694,7 +718,6 @@
         },
         options: {
           indexAxis: 'y',
-          interaction: { mode: 'index', intersect: false, axis: 'y' },
           responsive: true,
           maintainAspectRatio: false,
           layout: { padding: { right: 8 } },
@@ -710,10 +733,38 @@
       });
     }
 
+    // ===== MEMÓRIA: guarda o último resultado bom de cada aba/período (navegador) =====
+    const memoriaFront = {};
+    function lerMemoria(chave) {
+      if (memoriaFront[chave] !== undefined) return memoriaFront[chave];
+      try {
+        const t = localStorage.getItem('dash_mem:' + chave);
+        if (t) { memoriaFront[chave] = JSON.parse(t); return memoriaFront[chave]; }
+      } catch (e) {}
+      return null;
+    }
+    function gravarMemoria(chave, valor) {
+      memoriaFront[chave] = valor;
+      try { localStorage.setItem('dash_mem:' + chave, JSON.stringify(valor)); } catch (e) {}
+    }
+    // Busca o JSON; se falhar ou vier com erro, devolve o último resultado bom da mesma URL
+    async function buscarJSON(url) {
+      try {
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data && !data.error) { gravarMemoria('url:' + url, data); return data; }
+      } catch (e) { console.error('Falha ao buscar', url, e); }
+      return lerMemoria('url:' + url);
+    }
+    // Para blocos que às vezes chegam vazios (ex.: gráficos do Estoque)
+    function listaComMemoria(chave, lista) {
+      if (Array.isArray(lista) && lista.length) { gravarMemoria('lista:' + chave, lista); return lista; }
+      return lerMemoria('lista:' + chave) || [];
+    }
+
     async function carregarEstoque() {
       try {
-        const res = await fetch('/api/dashboard');
-        const data = await res.json();
+        const data = await buscarJSON('/api/dashboard');
         if (!data || data.error) return;
 
         const pickPecas = Number(data.picking?.total_pecas || 0);
@@ -761,9 +812,9 @@
         const categoriasPulmao = pulmaoData.map(g => g.categoria);
 
         renderizarGrafico('chartPecasPulmao', categoriasPulmao, pulmaoData.map(g => Number(g.pecas_capacidade || 0)), pulmaoData.map(g => Number(g.pecas_ocupadas || 0)), pulmaoData.map(g => Number(g.pecas_livres || 0)));
-        const fora = data.fora_sistema || [];
+        const fora = listaComMemoria('estoque-fora', data.fora_sistema);
         renderHBarChart('chartForaSistema', fora.map(f => f.status), fora.map(f => Number(f.qtd || 0)), '#1E88E5');
-        const deps = data.depositos || [];
+        const deps = listaComMemoria('estoque-deps', data.depositos);
         renderHBarChart('chartDepositos', deps.map(d => d.area), deps.map(d => Number(d.pecas || 0)), '#1E88E5');
 
         renderizarGrafico('chartPosicoesPulmao', categoriasPulmao, pulmaoData.map(g => Number(g.posicoes_capacidade || 0)), pulmaoData.map(g => Number(g.posicoes_ocupadas || 0)), pulmaoData.map(g => Number(g.posicoes_livres || 0)));
@@ -777,8 +828,7 @@
         const p = cfg.p;
         const $ = id => document.getElementById(p + id);
 
-        const res = await fetch(`/api/outbound?data_inicio=${dataInicio}&data_fim=${dataFim}&canal=${cfg.canal}`);
-        const data = await res.json();
+        const data = await buscarJSON(`/api/outbound?data_inicio=${dataInicio}&data_fim=${dataFim}&canal=${cfg.canal}`);
         if (!data || data.error) return;
 
         $('atualizacao').innerText = data.ultima_atualizacao || '-';
@@ -865,8 +915,7 @@
       try {
         const p = cfg.p;
         const $ = id => document.getElementById(p + id);
-        const res = await fetch(`/api/expedicao?data_inicio=${dataInicio}&data_fim=${dataFim}`);
-        const data = await res.json();
+        const data = await buscarJSON(`/api/expedicao?data_inicio=${dataInicio}&data_fim=${dataFim}`);
         if (!data || data.error) return;
 
         $('atualizacao').innerText = data.ultima_atualizacao || '-';
@@ -890,13 +939,10 @@
       try {
         const p = cfg.p;
         const $ = id => document.getElementById(p + id);
-        const res = await fetch(`/api/inbound?tipo=${cfg.tipo}&data_inicio=${dataInicio}&data_fim=${dataFim}`);
-        const data = await res.json();
+        const data = await buscarJSON(`/api/inbound?tipo=${cfg.tipo}&data_inicio=${dataInicio}&data_fim=${dataFim}`);
         if (!data || data.error) return;
 
         $('sla').innerText = data.sla_24h || '-';
-        if ($('privado')) $('privado').innerText = fmt(data.pecas_privado);
-        if ($('prefeitura')) $('prefeitura').innerText = fmt(data.pecas_prefeitura);
         $('atualizacao').innerText = data.ultima_atualizacao || '-';
         $('fcst-val').innerText = fmt(data.forecast_pecas);
         $('rec-val').innerText = fmt(data.pecas_recebidas);
@@ -1000,13 +1046,12 @@
         },
         options: {
           indexAxis: 'y',
-          interaction: { mode: 'index', intersect: false, axis: 'y' },
           responsive: true,
           maintainAspectRatio: false,
           layout: { padding: { right: 6 } },
           plugins: {
             legend: { display: true, position: 'top', labels: { color: '#fff', boxWidth: 34, boxHeight: 12, font: { size: 12, weight: 'bold' } } },
-            tooltip: { callbacks: { label: c => `${c.dataset.label}: ${fmt(c.dataset.raw[c.dataIndex])}${cfg === SERIES_STATUS_EXPEDICAO ? '' : ' peças'}` } },
+            tooltip: { callbacks: { label: c => `${c.dataset.label}: ${fmt(c.dataset.raw[c.dataIndex])} peças` } },
             datalabels: {
               color: '#fff',
               anchor: 'end',
@@ -1042,13 +1087,6 @@
       };
     }
 
-    function legendaSimples(chart) {
-      return Chart.defaults.plugins.legend.labels.generateLabels(chart).map(l => {
-        const linha = chart.data.datasets[l.datasetIndex].type === 'line';
-        return linha ? { ...l, pointStyle: 'line', lineDash: [], lineWidth: 3 } : { ...l, pointStyle: 'rect' };
-      });
-    }
-
     function renderBarChart(canvasId, labels, dataValores, cor, legendLabel, metaValores) {
       const canvas = document.getElementById(canvasId);
       if (!canvas) return;
@@ -1074,17 +1112,12 @@
           spanGaps: true,
           order: 1,
           datalabels: {
-            display: ctx => ctx.dataset.data[ctx.dataIndex] !== null,
+            display: ctx => ctx.dataIndex === ultimoMeta,
             color: '#F59E0B',
-            backgroundColor: 'rgba(0,0,0,0.65)',
-            borderRadius: 3,
-            padding: { top: 1, bottom: 1, left: 3, right: 3 },
-            rotation: labels.length > 18 ? -90 : 0,
             anchor: 'end',
             align: 'top',
-            offset: 4,
             clip: false,
-            font: { weight: 'bold', size: 10 },
+            font: { weight: 'bold', size: 11 },
             formatter: v => fmt(v)
           }
         });
@@ -1096,9 +1129,9 @@
         options: {
           responsive: true,
           maintainAspectRatio: false,
-          layout: { padding: { top: temMeta ? 50 : 22, right: 10 } },
+          layout: { padding: { top: 22, right: 10 } },
           plugins: {
-            legend: { display: temMeta, position: 'top', align: 'end', labels: { color: '#aaa', usePointStyle: true, boxWidth: 22, boxHeight: 8, font: { size: 11 }, generateLabels: legendaSimples } },
+            legend: { display: temMeta, position: 'top', align: 'end', labels: { color: '#aaa', boxWidth: 16, boxHeight: 8, font: { size: 11 } } },
             datalabels: { color: '#fff', anchor: 'end', align: 'top', clip: false, font: { weight: 'bold', size: 11 }, formatter: val => val > 0 ? fmt(val) : '' }
           },
           scales: {
@@ -1118,8 +1151,7 @@
 
     async function carregarNotasFluxo() {
       try {
-        const res = await fetch('/api/notas-fluxo');
-        const data = await res.json();
+        const data = await buscarJSON('/api/notas-fluxo');
         if (!data || data.error) {
           console.error(data);
           const msg = data && (data.detalhe || data.error) ? (data.detalhe || data.error) : 'Resposta inválida do servidor';
