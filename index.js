@@ -100,6 +100,10 @@ app.get('/', (req, res) => res.sendFile(path.join(pastaSite, 'index.html')));
 const normNome = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 const aspas = nome => '"' + String(nome).replace(/"/g, '""') + '"';
 
+// Blocos (coluna Área) que entram nos totais do Estoque (Total Estoque, SKUs e Picking/Pulmão).
+// O gráfico "Peças por Depósitos" continua mostrando todas as áreas.
+const BLOCOS_ESTOQUE = ['PP', 'PR', 'PQ', 'SP'];
+
 let infoEstoque = null;
 let infoEstoqueEm = 0;
 
@@ -197,10 +201,16 @@ app.get('/api/dashboard', async (req, res) => {
                  ${info.colArea ? `, COALESCE(NULLIF(TRIM(${aspas(info.colArea)}::text), ''), 'SEM ÁREA') AS area` : ''}
           FROM "estoque" ${filtroEstado}`;
 
+        // Totais e Picking/Pulmão: só os blocos PP, PR, PQ e SP
+        const soBlocos = info.colArea
+          ? `WHERE UPPER(TRIM(t.area)) IN (${BLOCOS_ESTOQUE.map(b => `'${b}'`).join(', ')})`
+          : '';
+        if (!info.colArea) diag.aviso_area = 'Coluna Área não encontrada na tabela estoque: o filtro de blocos NÃO foi aplicado.';
+
         const tot = await pool.query(`
           SELECT COUNT(DISTINCT sku) FILTER (WHERE q > 0 AND sku <> '') AS skus,
                  COALESCE(SUM(q) FILTER (WHERE q > 0), 0) AS pecas
-          FROM (${base}) t`);
+          FROM (${base}) t ${soBlocos}`);
         totalSkus = Number(tot.rows[0]?.skus || 0);
         totalPecas = Number(tot.rows[0]?.pecas || 0);
 
@@ -209,7 +219,7 @@ app.get('/api/dashboard', async (req, res) => {
             SELECT COALESCE(pulmao, false) AS pulmao,
                    COUNT(DISTINCT sku) FILTER (WHERE q > 0 AND sku <> '') AS skus,
                    COALESCE(SUM(q) FILTER (WHERE q > 0), 0) AS pecas
-            FROM (${base}) t
+            FROM (${base}) t ${soBlocos}
             GROUP BY 1`);
           skuPick = 0; pecasPick = 0; skuPul = 0; pecasPul = 0;
           sp.rows.forEach(r => {
