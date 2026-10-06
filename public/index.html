@@ -369,6 +369,8 @@
             <div class="logo-box-img ftd"><img class="logo-ftd" alt="FTD Educação"></div>
             <div class="header-kpis-group">
               <div class="header-kpi-card" style="min-width:130px"><span>% SLA 24h</span><strong id="${p}sla">-</strong></div>
+              ${p === 'rec-' ? `<div class="header-kpi-card" style="min-width:110px"><span>Privado</span><strong id="${p}privado">-</strong></div>
+              <div class="header-kpi-card" style="min-width:110px"><span>Prefeitura</span><strong id="${p}prefeitura">-</strong></div>` : ''}
             </div>
             <div class="update-time" style="text-align:left;margin:0 0 0 6px">Última Atualização:<br><span id="${p}atualizacao">-</span></div>
           </div>
@@ -893,6 +895,8 @@
         if (!data || data.error) return;
 
         $('sla').innerText = data.sla_24h || '-';
+        if ($('privado')) $('privado').innerText = fmt(data.pecas_privado);
+        if ($('prefeitura')) $('prefeitura').innerText = fmt(data.pecas_prefeitura);
         $('atualizacao').innerText = data.ultima_atualizacao || '-';
         $('fcst-val').innerText = fmt(data.forecast_pecas);
         $('rec-val').innerText = fmt(data.pecas_recebidas);

@@ -128,44 +128,6 @@ async function erroComCache(res, chave, err, titulo) {
   return res.status(500).json({ error: titulo, detalhe: err.message });
 }
 
-// ===== DETECTOR DE RECARGA DO BANCO =====
-// Guarda quantas linhas cada tabela tinha da última vez que estava "normal".
-// Se a tabela ficar vazia ou encolher muito (ex.: você apagou e está reescrevendo),
-// consideramos que está em recarga e devolvemos o último resultado bom,
-// mesmo que já existam algumas linhas parciais (que gerariam números errados).
-const contagensTabela = {};
-const LIMITE_ENCOLHEU = 0.5; // se a tabela cair abaixo de 50% do tamanho normal, é recarga
-
-async function tabelaEmRecarga(tabela) {
-  try {
-    const nome = '"' + String(tabela).replace(/"/g, '""') + '"';
-    const r = await pool.query(`SELECT COUNT(*)::int AS n FROM ${nome}`);
-    const n = r.rows[0].n;
-    const antes = contagensTabela[tabela] || 0;
-    if (n === 0 || (antes > 0 && n < antes * LIMITE_ENCOLHEU)) return true; // não atualiza a referência
-    contagensTabela[tabela] = n;
-    return false;
-  } catch (e) {
-    // Tabela sumiu (DROP/recriação) ou erro de leitura: trata como recarga
-    return true;
-  }
-}
-
-// Se alguma das tabelas estiver em recarga e houver cache, responde com o cache e devolve true
-async function servirCacheSeRecarga(res, chave, tabelas) {
-  for (const t of tabelas) {
-    if (await tabelaEmRecarga(t)) {
-      const anterior = await lerCache(chave);
-      if (anterior) {
-        res.json({ ...anterior.resposta, dados_anteriores: true });
-        return true;
-      }
-      return false; // sem cache ainda: segue o fluxo normal
-    }
-  }
-  return false;
-}
-
 // ===== ARQUIVOS DO SITE =====
 // Serve o index.html da pasta "public" se existir; senão, da raiz do projeto
 const pastaSite = fs.existsSync(path.join(__dirname, 'public', 'index.html'))
@@ -228,9 +190,6 @@ async function detectarColunasEstoque() {
 
 app.get('/api/dashboard', async (req, res) => {
   try {
-    // Se "estoque" ou "capacidade_armazem" estiver em recarga, mostra o último resultado bom
-    if (await servirCacheSeRecarga(res, 'estoque', ['estoque', 'capacidade_armazem'])) return;
-
     // 1) Capacidade por categoria (posições e unidades)
     const cap = await pool.query(`
       SELECT
@@ -371,56 +330,6 @@ app.get('/api/dashboard', async (req, res) => {
       ultima_atualizacao: await ultimaAtualizacao()
     };
 
-    // Memória por bloco: se algum pedaço veio vazio (consulta falhou ou tabela em recarga),
-    // reaproveita o último valor bom em vez de zerar o KPI / apagar o gráfico.
-    const anterior = await lerCache('estoque');
-    if (anterior && anterior.resposta) {
-      const a = anterior.resposta;
-      let reaproveitou = false;
-
-      // Tabela "estoque" vazia/em recarga => reaproveita TODO o bloco de peças/SKUs
-      const estoqueVazio = totalPecas === 0 && totalSkus === 0;
-      if (estoqueVazio && a.gerais && a.gerais.total_estoque > 0) {
-        resposta.gerais.total_estoque = a.gerais.total_estoque;
-        resposta.gerais.total_skus = a.gerais.total_skus;
-        ['picking', 'pulmao'].forEach(k => {
-          if (a[k]) {
-            resposta[k].total_pecas = a[k].total_pecas;
-            resposta[k].total_skus = a[k].total_skus;
-          }
-        });
-        if (!resposta.depositos.length && (a.depositos || []).length) resposta.depositos = a.depositos;
-        reaproveitou = true;
-      }
-
-      // Posições fora do sistema (tabela locais_ftd)
-      if (!resposta.fora_sistema.length && (a.fora_sistema || []).length) {
-        resposta.fora_sistema = a.fora_sistema;
-        reaproveitou = true;
-      }
-
-      // Gráficos de capacidade (tabela capacidade_armazem)
-      let capReaproveitada = false;
-      if (!resposta.graficos_picking.length && (a.graficos_picking || []).length) {
-        resposta.graficos_picking = a.graficos_picking;
-        resposta.picking = { ...resposta.picking, capacidade: a.picking.capacidade, ocupadas: a.picking.ocupadas, vazias: a.picking.vazias };
-        capReaproveitada = true;
-      }
-      if (!resposta.graficos_pulmao.length && (a.graficos_pulmao || []).length) {
-        resposta.graficos_pulmao = a.graficos_pulmao;
-        resposta.pulmao = { ...resposta.pulmao, capacidade: a.pulmao.capacidade, ocupadas: a.pulmao.ocupadas, vazias: a.pulmao.vazias };
-        capReaproveitada = true;
-      }
-      if (capReaproveitada) {
-        resposta.gerais.total_posicoes = resposta.picking.capacidade + resposta.pulmao.capacidade;
-        resposta.gerais.posicoes_ocupadas = resposta.picking.ocupadas + resposta.pulmao.ocupadas;
-        resposta.gerais.posicoes_vazias = resposta.picking.vazias + resposta.pulmao.vazias;
-        reaproveitou = true;
-      }
-
-      if (reaproveitou) resposta.dados_parciais_anteriores = true;
-    }
-
     await responderComCache(res, 'estoque', resposta,
       d => d.gerais.total_posicoes === 0 && d.gerais.total_estoque === 0);
   } catch (err) {
@@ -506,9 +415,6 @@ app.get('/api/outbound', async (req, res) => {
   const canalRe = cfgCanal ? cfgCanal.re : '';
   const chaveOutbound = `outbound:${canalKey || 'geral'}:${req.query.data_inicio || 'mes'}:${req.query.data_fim || 'atual'}`;
   try {
-    // Tabela "itens" em recarga => mostra o último resultado bom desta aba/período
-    if (await servirCacheSeRecarga(res, chaveOutbound, ['itens'])) return;
-
     const { data_inicio, data_fim } = req.query;
 
     let dtInicio, dtFim;
@@ -760,9 +666,6 @@ app.get('/api/outbound', async (req, res) => {
 // Qtde de SKUs: o valor se repete em todas as linhas da nota, então pegamos 1 por nota (MAX), sem somar.
 app.get('/api/notas-fluxo', async (req, res) => {
   try {
-    // Tabela "itens" em recarga => mostra o último resultado bom
-    if (await servirCacheSeRecarga(res, 'resumo-nf', ['itens'])) return;
-
     const base = `
       WITH base AS (
         SELECT
@@ -885,9 +788,6 @@ app.get('/api/inbound', async (req, res) => {
   const chave = `inbound:${tipoKey}:${dIni}:${dFim}`;
 
   try {
-    // Tabela "entrada_consolidada" em recarga => mostra o último resultado bom
-    if (await servirCacheSeRecarga(res, chave, ['entrada_consolidada'])) return;
-
     // Filtro base: regra (COMPRA/DEVOL) e sem cancelados
     const filtroBase = `
       TRIM("regra") ~* '${cfg.regra}'
@@ -944,6 +844,50 @@ app.get('/api/inbound', async (req, res) => {
       statusProcessos = sp.rows;
     } catch (e) {}
 
+    // Privado x Prefeitura (só na aba Recebimento): cruza as OR do período com a tabela
+    // "entrada_analitico" (número_or) e soma "qtde_recebida", separando por "tipo_de_venda".
+    let pecasPrivado = 0, pecasPrefeitura = 0, orPrivado = 0, orPrefeitura = 0, tiposVenda = [];
+    if (tipoKey === 'recebimento') {
+      try {
+        if (await tabelaEmRecarga('entrada_analitico')) throw new Error('entrada_analitico em recarga');
+        const orsPeriodo = `
+          SELECT DISTINCT REGEXP_REPLACE(TRIM(t.orr::text), '[^0-9]', '', 'g')
+          FROM ${sub(cad)} WHERE ${noPeriodo}`;
+        const baseAn = `
+          FROM "entrada_analitico" a
+          WHERE REGEXP_REPLACE(TRIM(a."número_or"::text), '[^0-9]', '', 'g') IN (${orsPeriodo})
+            AND COALESCE(a."status_processo", '') NOT ILIKE '%cancel%'`;
+        const pv = await pool.query(`
+          SELECT
+            COALESCE(SUM(a."qtde_recebida") FILTER (WHERE a."tipo_de_venda" ILIKE '%privad%'), 0) AS privado,
+            COALESCE(SUM(a."qtde_recebida") FILTER (WHERE a."tipo_de_venda" ILIKE '%prefeit%'), 0) AS prefeitura,
+            COUNT(DISTINCT a."número_or") FILTER (WHERE a."tipo_de_venda" ILIKE '%privad%') AS or_privado,
+            COUNT(DISTINCT a."número_or") FILTER (WHERE a."tipo_de_venda" ILIKE '%prefeit%') AS or_prefeitura
+          ${baseAn}`, params);
+        const p0 = pv.rows[0] || {};
+        pecasPrivado = Number(p0.privado || 0);
+        pecasPrefeitura = Number(p0.prefeitura || 0);
+        orPrivado = Number(p0.or_privado || 0);
+        orPrefeitura = Number(p0.or_prefeitura || 0);
+        // Para conferir os valores existentes de tipo_de_venda
+        const tv = await pool.query(`
+          SELECT COALESCE(NULLIF(TRIM(a."tipo_de_venda"), ''), '(vazio)') AS tipo,
+                 COALESCE(SUM(a."qtde_recebida"), 0) AS pecas
+          ${baseAn} GROUP BY 1 ORDER BY 2 DESC LIMIT 12`, params);
+        tiposVenda = tv.rows.map(r => ({ tipo: r.tipo, pecas: Number(r.pecas) }));
+      } catch (e) {
+        console.error('Aviso: erro ao cruzar com entrada_analitico:', e.message);
+        const ant = await lerCache(chave);
+        if (ant && ant.resposta) {
+          pecasPrivado = ant.resposta.pecas_privado || 0;
+          pecasPrefeitura = ant.resposta.pecas_prefeitura || 0;
+          orPrivado = ant.resposta.or_privado || 0;
+          orPrefeitura = ant.resposta.or_prefeitura || 0;
+          tiposVenda = ant.resposta.tipos_venda || [];
+        }
+      }
+    }
+
     // Forecast do mês, forecast por dia útil e percentuais
     const mesRef = dIni.slice(0, 4) + dIni.slice(5, 7);
     let forecastPecas = 0;
@@ -999,6 +943,11 @@ app.get('/api/inbound', async (req, res) => {
       pecas_armazenadas: Number(r2.pecas || 0),
       or_armazenadas: Number(r2.ors || 0),
       armz_x_fcst: armzXFcst,
+      pecas_privado: pecasPrivado,
+      pecas_prefeitura: pecasPrefeitura,
+      or_privado: orPrivado,
+      or_prefeitura: orPrefeitura,
+      tipos_venda: tiposVenda,
       sla_24h: sla24h,
       sla: sla,
       pecas_integradas_grafico: gInteg.rows,
@@ -1062,9 +1011,6 @@ app.get('/api/expedicao', async (req, res) => {
   const chave = `expedicao:${dIni}:${dFim}`;
 
   try {
-    // Tabela "itens" em recarga => mostra o último resultado bom
-    if (await servirCacheSeRecarga(res, chave, ['itens'])) return;
-
     const info = await detectarColunasItens();
     const transp = info.colTransp
       ? `COALESCE(NULLIF(TRIM(${aspas(info.colTransp)}::text), ''), 'SEM TRANSPORTADORA')`
@@ -1108,22 +1054,19 @@ app.get('/api/expedicao', async (req, res) => {
 
     // Por dia: "Expedido" = itens com processado_em naquele dia;
     // "Sem coleta" = itens importados naquele dia que ainda estão com processado_em vazio.
-    // As colunas de data são tratadas como texto: vazio ('') vira NULL antes de converter para timestamp.
-    const procTs = `NULLIF(TRIM("processado_em"::text), '')::timestamp`;
-    const impTs  = `NULLIF(TRIM("importado_em"::text), '')::timestamp`;
     const porDia = idExpr => `
-      SELECT TO_CHAR(data, 'YYYY-MM-DD') AS data,
+      SELECT data,
              COUNT(DISTINCT id) FILTER (WHERE tipo = 'exp') AS expedido,
              COUNT(DISTINCT id) FILTER (WHERE tipo = 'sem') AS sem_coleta
       FROM (
-        SELECT DATE(${procTs}) AS data, ${idExpr} AS id, 'exp' AS tipo
+        SELECT DATE("processado_em") AS data, ${idExpr} AS id, 'exp' AS tipo
         FROM "itens"
-        WHERE ${procTs} >= $1::timestamp AND ${procTs} <= $2::timestamp AND ${semCancelado}
+        WHERE "processado_em" >= $1::timestamp AND "processado_em" <= $2::timestamp AND ${semCancelado}
         UNION ALL
-        SELECT DATE(${impTs}) AS data, ${idExpr} AS id, 'sem' AS tipo
+        SELECT DATE("importado_em") AS data, ${idExpr} AS id, 'sem' AS tipo
         FROM "itens"
-        WHERE ${impTs} >= $1::timestamp AND ${impTs} <= $2::timestamp
-          AND ${procTs} IS NULL AND ${semCancelado}
+        WHERE "importado_em" >= $1::timestamp AND "importado_em" <= $2::timestamp
+          AND "processado_em" IS NULL AND ${semCancelado}
       ) t
       GROUP BY data
       ORDER BY data DESC`;
