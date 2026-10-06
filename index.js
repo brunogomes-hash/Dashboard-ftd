@@ -715,6 +715,15 @@ const TIPOS_INBOUND = {
   devolucao:   { regra: '^devol',  colForecast: 'devolucao',   modal: '^devol' }
 };
 
+// Converte o percentual da tabela em "valor cheio": 0,64% -> 64% | 0,6437 -> 64,37%
+// Valores acima de 10 são considerados já convertidos e ficam como estão.
+function percentualCheio(txt) {
+  const n = parseFloat(String(txt ?? '').replace('%', '').replace(/\./g, '').replace(',', '.'));
+  if (isNaN(n)) return '0%';
+  const v = Math.abs(n) <= 10 ? n * 100 : n;
+  return Number(v.toFixed(2)).toString().replace('.', ',') + '%';
+}
+
 // Converte texto de data (AAAA-MM-DD..., DD/MM/AAAA... ou AAAAMMDD) em date; devolve NULL se não reconhecer
 const dataSQL = col => `(CASE
     WHEN TRIM(${col}::text) ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}' THEN LEFT(TRIM(${col}::text), 10)::date
@@ -796,7 +805,7 @@ app.get('/api/inbound', async (req, res) => {
     const mesRef = dIni.slice(0, 4) + dIni.slice(5, 7);
     let forecastPecas = 0;
     const forecastDiario = [];
-    let armzXFcst = '0,00%';
+    let armzXFcst = '0%';
     let sla24h = '-';
     let sla = '-';
     try {
@@ -827,7 +836,7 @@ app.get('/api/inbound', async (req, res) => {
         WHERE TRIM("modalidade") ~* $2 AND LEFT(TRIM("data"), 6) = $1
         LIMIT 1`, [mesRef, cfg.modal]);
       if (pc.rows[0]) {
-        armzXFcst = (pc.rows[0].armz || '0,00%').trim();
+        armzXFcst = percentualCheio(pc.rows[0].armz);
         sla24h = (pc.rows[0].sla24 || '-').trim();
         sla = (pc.rows[0].sla || '-').trim();
       }

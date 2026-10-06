@@ -105,14 +105,14 @@
 <body>
 
   <div class="tabs-nav">
-    <button class="tab-btn active" data-tab="estoque" onclick="switchTab('estoque', true)">Estoque</button>
+    <button class="tab-btn active" data-tab="recebimento" onclick="switchTab('recebimento', true)">Recebimento</button>
+    <button class="tab-btn" data-tab="devolucao" onclick="switchTab('devolucao', true)">Devolução</button>
+    <button class="tab-btn" data-tab="estoque" onclick="switchTab('estoque', true)">Estoque</button>
     <button class="tab-btn" data-tab="outbound" onclick="switchTab('outbound', true)">Outbound - Geral</button>
     <button class="tab-btn" data-tab="b2b" onclick="switchTab('b2b', true)">B2B</button>
     <button class="tab-btn" data-tab="b2c" onclick="switchTab('b2c', true)">B2C</button>
     <button class="tab-btn" data-tab="transferencia" onclick="switchTab('transferencia', true)">Transferência</button>
     <button class="tab-btn" data-tab="prefeitura" onclick="switchTab('prefeitura', true)">Prefeitura</button>
-    <button class="tab-btn" data-tab="recebimento" onclick="switchTab('recebimento', true)">Recebimento</button>
-    <button class="tab-btn" data-tab="devolucao" onclick="switchTab('devolucao', true)">Devolução</button>
     <button class="tab-btn" data-tab="notas" onclick="switchTab('notas', true)">Resumo de NF</button>
 
     <div class="apresentacao" title="Modo apresentação">
@@ -130,7 +130,7 @@
   </div>
 
   <!-- ABA 1: ESTOQUE -->
-  <div id="tab-estoque" class="tab-content active">
+  <div id="tab-estoque" class="tab-content">
     <div class="header">
       <div class="logos-box"><div class="logo-box-img luft"><img class="logo-luft" alt="Luft Logistics"></div><div class="logo-box-img ftd"><img class="logo-ftd" alt="FTD Educação"></div><span class="header-title" style="margin-left:10px">ESTOQUE - FTD FILIAL</span></div>
       <div>
@@ -239,7 +239,7 @@
   <div id="tab-b2c" class="tab-content"></div>
   <div id="tab-transferencia" class="tab-content"></div>
   <div id="tab-prefeitura" class="tab-content"></div>
-  <div id="tab-recebimento" class="tab-content"></div>
+  <div id="tab-recebimento" class="tab-content active"></div>
   <div id="tab-devolucao" class="tab-content"></div>
 
   <!-- ABA 3: RESUMO DE NF -->
@@ -987,7 +987,7 @@
     montarAbasOutbound();
     aplicarLogos();
     iniciarApresentacao();
-    carregarEstoque();
+    carregarAbaAtiva();
     setInterval(carregarAbaAtiva, 30000);
   </script>
 </body>
