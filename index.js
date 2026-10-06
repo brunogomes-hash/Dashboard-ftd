@@ -128,6 +128,44 @@ async function erroComCache(res, chave, err, titulo) {
   return res.status(500).json({ error: titulo, detalhe: err.message });
 }
 
+// ===== DETECTOR DE RECARGA DO BANCO =====
+// Guarda quantas linhas cada tabela tinha da última vez que estava "normal".
+// Se a tabela ficar vazia ou encolher muito (ex.: você apagou e está reescrevendo),
+// consideramos que está em recarga e devolvemos o último resultado bom,
+// mesmo que já existam algumas linhas parciais (que gerariam números errados).
+const contagensTabela = {};
+const LIMITE_ENCOLHEU = 0.5; // se a tabela cair abaixo de 50% do tamanho normal, é recarga
+
+async function tabelaEmRecarga(tabela) {
+  try {
+    const nome = '"' + String(tabela).replace(/"/g, '""') + '"';
+    const r = await pool.query(`SELECT COUNT(*)::int AS n FROM ${nome}`);
+    const n = r.rows[0].n;
+    const antes = contagensTabela[tabela] || 0;
+    if (n === 0 || (antes > 0 && n < antes * LIMITE_ENCOLHEU)) return true; // não atualiza a referência
+    contagensTabela[tabela] = n;
+    return false;
+  } catch (e) {
+    // Tabela sumiu (DROP/recriação) ou erro de leitura: trata como recarga
+    return true;
+  }
+}
+
+// Se alguma das tabelas estiver em recarga e houver cache, responde com o cache e devolve true
+async function servirCacheSeRecarga(res, chave, tabelas) {
+  for (const t of tabelas) {
+    if (await tabelaEmRecarga(t)) {
+      const anterior = await lerCache(chave);
+      if (anterior) {
+        res.json({ ...anterior.resposta, dados_anteriores: true });
+        return true;
+      }
+      return false; // sem cache ainda: segue o fluxo normal
+    }
+  }
+  return false;
+}
+
 // ===== ARQUIVOS DO SITE =====
 // Serve o index.html da pasta "public" se existir; senão, da raiz do projeto
 const pastaSite = fs.existsSync(path.join(__dirname, 'public', 'index.html'))
@@ -190,6 +228,9 @@ async function detectarColunasEstoque() {
 
 app.get('/api/dashboard', async (req, res) => {
   try {
+    // Se "estoque" ou "capacidade_armazem" estiver em recarga, mostra o último resultado bom
+    if (await servirCacheSeRecarga(res, 'estoque', ['estoque', 'capacidade_armazem'])) return;
+
     // 1) Capacidade por categoria (posições e unidades)
     const cap = await pool.query(`
       SELECT
@@ -331,25 +372,52 @@ app.get('/api/dashboard', async (req, res) => {
     };
 
     // Memória por bloco: se algum pedaço veio vazio (consulta falhou ou tabela em recarga),
-    // reaproveita o último valor bom em vez de apagar o gráfico/KPI.
+    // reaproveita o último valor bom em vez de zerar o KPI / apagar o gráfico.
     const anterior = await lerCache('estoque');
     if (anterior && anterior.resposta) {
       const a = anterior.resposta;
       let reaproveitou = false;
-      if (!resposta.depositos.length && (a.depositos || []).length) { resposta.depositos = a.depositos; reaproveitou = true; }
-      if (!resposta.fora_sistema.length && (a.fora_sistema || []).length) { resposta.fora_sistema = a.fora_sistema; reaproveitou = true; }
-      ['picking', 'pulmao'].forEach(k => {
-        if (resposta[k].total_pecas == null && a[k] && a[k].total_pecas != null) {
-          resposta[k].total_pecas = a[k].total_pecas;
-          resposta[k].total_skus = a[k].total_skus;
-          reaproveitou = true;
-        }
-      });
-      if (!resposta.gerais.total_estoque && a.gerais && a.gerais.total_estoque > 0) {
+
+      // Tabela "estoque" vazia/em recarga => reaproveita TODO o bloco de peças/SKUs
+      const estoqueVazio = totalPecas === 0 && totalSkus === 0;
+      if (estoqueVazio && a.gerais && a.gerais.total_estoque > 0) {
         resposta.gerais.total_estoque = a.gerais.total_estoque;
         resposta.gerais.total_skus = a.gerais.total_skus;
+        ['picking', 'pulmao'].forEach(k => {
+          if (a[k]) {
+            resposta[k].total_pecas = a[k].total_pecas;
+            resposta[k].total_skus = a[k].total_skus;
+          }
+        });
+        if (!resposta.depositos.length && (a.depositos || []).length) resposta.depositos = a.depositos;
         reaproveitou = true;
       }
+
+      // Posições fora do sistema (tabela locais_ftd)
+      if (!resposta.fora_sistema.length && (a.fora_sistema || []).length) {
+        resposta.fora_sistema = a.fora_sistema;
+        reaproveitou = true;
+      }
+
+      // Gráficos de capacidade (tabela capacidade_armazem)
+      let capReaproveitada = false;
+      if (!resposta.graficos_picking.length && (a.graficos_picking || []).length) {
+        resposta.graficos_picking = a.graficos_picking;
+        resposta.picking = { ...resposta.picking, capacidade: a.picking.capacidade, ocupadas: a.picking.ocupadas, vazias: a.picking.vazias };
+        capReaproveitada = true;
+      }
+      if (!resposta.graficos_pulmao.length && (a.graficos_pulmao || []).length) {
+        resposta.graficos_pulmao = a.graficos_pulmao;
+        resposta.pulmao = { ...resposta.pulmao, capacidade: a.pulmao.capacidade, ocupadas: a.pulmao.ocupadas, vazias: a.pulmao.vazias };
+        capReaproveitada = true;
+      }
+      if (capReaproveitada) {
+        resposta.gerais.total_posicoes = resposta.picking.capacidade + resposta.pulmao.capacidade;
+        resposta.gerais.posicoes_ocupadas = resposta.picking.ocupadas + resposta.pulmao.ocupadas;
+        resposta.gerais.posicoes_vazias = resposta.picking.vazias + resposta.pulmao.vazias;
+        reaproveitou = true;
+      }
+
       if (reaproveitou) resposta.dados_parciais_anteriores = true;
     }
 
@@ -438,6 +506,9 @@ app.get('/api/outbound', async (req, res) => {
   const canalRe = cfgCanal ? cfgCanal.re : '';
   const chaveOutbound = `outbound:${canalKey || 'geral'}:${req.query.data_inicio || 'mes'}:${req.query.data_fim || 'atual'}`;
   try {
+    // Tabela "itens" em recarga => mostra o último resultado bom desta aba/período
+    if (await servirCacheSeRecarga(res, chaveOutbound, ['itens'])) return;
+
     const { data_inicio, data_fim } = req.query;
 
     let dtInicio, dtFim;
@@ -689,6 +760,9 @@ app.get('/api/outbound', async (req, res) => {
 // Qtde de SKUs: o valor se repete em todas as linhas da nota, então pegamos 1 por nota (MAX), sem somar.
 app.get('/api/notas-fluxo', async (req, res) => {
   try {
+    // Tabela "itens" em recarga => mostra o último resultado bom
+    if (await servirCacheSeRecarga(res, 'resumo-nf', ['itens'])) return;
+
     const base = `
       WITH base AS (
         SELECT
@@ -811,6 +885,9 @@ app.get('/api/inbound', async (req, res) => {
   const chave = `inbound:${tipoKey}:${dIni}:${dFim}`;
 
   try {
+    // Tabela "entrada_consolidada" em recarga => mostra o último resultado bom
+    if (await servirCacheSeRecarga(res, chave, ['entrada_consolidada'])) return;
+
     // Filtro base: regra (COMPRA/DEVOL) e sem cancelados
     const filtroBase = `
       TRIM("regra") ~* '${cfg.regra}'
@@ -985,6 +1062,9 @@ app.get('/api/expedicao', async (req, res) => {
   const chave = `expedicao:${dIni}:${dFim}`;
 
   try {
+    // Tabela "itens" em recarga => mostra o último resultado bom
+    if (await servirCacheSeRecarga(res, chave, ['itens'])) return;
+
     const info = await detectarColunasItens();
     const transp = info.colTransp
       ? `COALESCE(NULLIF(TRIM(${aspas(info.colTransp)}::text), ''), 'SEM TRANSPORTADORA')`
