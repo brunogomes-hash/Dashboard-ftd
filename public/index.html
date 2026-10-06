@@ -470,17 +470,15 @@
         $('prod-ped').innerText   = fmt(data.pedidos_produzidas);
         $('exp-ped').innerText    = fmt(data.pedidos_expedidas);
 
-        const integ = data.pecas_integradas_grafico || [];
-        renderBarChart(p + 'chartIntegradas', integ.map(i => labelData(i.data)),
-          integ.map(i => Number(i.total_pecas || 0)), '#45a29e', 'Peças Integradas');
+        const sInteg = serieComForecast(data.pecas_integradas_grafico, data.forecast_diario);
+        renderBarChart(p + 'chartIntegradas', sInteg.labels, sInteg.valores, '#45a29e', 'Peças Integradas', sInteg.meta);
 
         const fat = data.pecas_faturadas_grafico || [];
         renderLineChart(p + 'chartFaturados', fat.map(i => labelData(i.data)),
           fat.map(i => Number(i.total_pecas || 0)), fat.map(i => Number(i.total_notas || 0)));
 
-        const expd = data.pecas_expedidas_grafico || [];
-        renderBarChart(p + 'chartExpedidas', expd.map(i => labelData(i.data)),
-          expd.map(i => Number(i.total_pecas || 0)), '#3B82F6', 'Quantidade');
+        const sExp = serieComForecast(data.pecas_expedidas_grafico, data.forecast_diario);
+        renderBarChart(p + 'chartExpedidas', sExp.labels, sExp.valores, '#3B82F6', 'Quantidade', sExp.meta);
       } catch (err) {
         console.error('Erro ao carregar outbound:', err);
       }
@@ -531,21 +529,66 @@
       });
     }
 
-    function renderBarChart(canvasId, labels, dataValores, cor, legendLabel) {
+    // Junta as datas com dados e as datas de forecast (dias úteis) numa mesma série
+    function serieComForecast(dados, forecast) {
+      const iso = d => String(d).split('T')[0];
+      const mapa = {};
+      (dados || []).forEach(i => { mapa[iso(i.data)] = Number(i.total_pecas || 0); });
+      const meta = {};
+      (forecast || []).forEach(f => { meta[f.data] = Number(f.valor || 0); });
+      const datas = Array.from(new Set([...Object.keys(mapa), ...Object.keys(meta)])).sort();
+      return {
+        labels: datas.map(labelData),
+        valores: datas.map(d => mapa[d] || 0),
+        meta: datas.map(d => (d in meta ? meta[d] : null))
+      };
+    }
+
+    function renderBarChart(canvasId, labels, dataValores, cor, legendLabel, metaValores) {
       const canvas = document.getElementById(canvasId);
       if (!canvas) return;
       const ctx = canvas.getContext('2d');
       if (window[canvasId + 'Obj']) window[canvasId + 'Obj'].destroy();
 
+      const temMeta = Array.isArray(metaValores) && metaValores.some(v => v !== null);
+      let ultimoMeta = -1;
+      if (temMeta) metaValores.forEach((v, i) => { if (v !== null) ultimoMeta = i; });
+
+      const datasets = [{ label: legendLabel, data: dataValores, backgroundColor: cor, borderRadius: 4, order: 2 }];
+      if (temMeta) {
+        datasets.push({
+          type: 'line',
+          label: 'Forecast/dia',
+          data: metaValores,
+          borderColor: '#F59E0B',
+          backgroundColor: '#F59E0B',
+          borderWidth: 2,
+          borderDash: [6, 4],
+          pointRadius: 2,
+          tension: 0,
+          spanGaps: true,
+          order: 1,
+          datalabels: {
+            display: ctx => ctx.dataIndex === ultimoMeta,
+            color: '#F59E0B',
+            anchor: 'end',
+            align: 'top',
+            clip: false,
+            font: { weight: 'bold', size: 11 },
+            formatter: v => fmt(v)
+          }
+        });
+      }
+
       window[canvasId + 'Obj'] = new Chart(ctx, {
         type: 'bar',
-        data: { labels: labels, datasets: [{ label: legendLabel, data: dataValores, backgroundColor: cor, borderRadius: 4 }] },
+        data: { labels: labels, datasets: datasets },
         options: {
           responsive: true,
           maintainAspectRatio: false,
           layout: { padding: { top: 22, right: 10 } },
           plugins: {
-            legend: { display: false },
+            legend: { display: temMeta, position: 'top', align: 'end', labels: { color: '#aaa', boxWidth: 16, boxHeight: 8, font: { size: 11 } } },
             datalabels: { color: '#fff', anchor: 'end', align: 'top', clip: false, font: { weight: 'bold', size: 11 }, formatter: val => val > 0 ? fmt(val) : '' }
           },
           scales: {

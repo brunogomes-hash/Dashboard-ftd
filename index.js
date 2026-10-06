@@ -106,6 +106,68 @@ app.get('/api/dashboard', async (req, res) => {
   });
 });
 
+// ===== FORECAST DIÁRIO (dias úteis = segunda a sábado, sem feriados) =====
+// Feriados nacionais fixos (MM-DD). Sexta-feira Santa é calculada pela data da Páscoa.
+const FERIADOS_FIXOS = ['01-01', '04-21', '05-01', '09-07', '10-12', '11-02', '11-15', '11-20', '12-25'];
+// Para incluir feriados estaduais/municipais ou dias sem operação, adicione aqui no formato 'AAAA-MM-DD'
+const FERIADOS_EXTRAS = [];
+
+function isoUTC(d) {
+  return d.toISOString().slice(0, 10);
+}
+
+function pascoa(ano) {
+  const a = ano % 19, b = Math.floor(ano / 100), c = ano % 100;
+  const d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4), k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const mes = Math.floor((h + l - 7 * m + 114) / 31);
+  const dia = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(Date.UTC(ano, mes - 1, dia));
+}
+
+const cacheFeriados = {};
+function feriadosDoAno(ano) {
+  if (cacheFeriados[ano]) return cacheFeriados[ano];
+  const set = new Set(FERIADOS_FIXOS.map(md => `${ano}-${md}`));
+  const sextaSanta = new Date(pascoa(ano).getTime() - 2 * 86400000);
+  set.add(isoUTC(sextaSanta));
+  FERIADOS_EXTRAS.forEach(d => set.add(d));
+  cacheFeriados[ano] = set;
+  return set;
+}
+
+function ehDiaUtil(iso) {
+  const [a, m, d] = iso.split('-').map(Number);
+  const dt = new Date(Date.UTC(a, m - 1, d));
+  if (dt.getUTCDay() === 0) return false; // domingo não conta
+  return !feriadosDoAno(a).has(iso);
+}
+
+function diasUteisDoMes(ano, mes) {
+  const ultimo = new Date(Date.UTC(ano, mes, 0)).getUTCDate();
+  let n = 0;
+  for (let d = 1; d <= ultimo; d++) {
+    const iso = `${ano}-${String(mes).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    if (ehDiaUtil(iso)) n++;
+  }
+  return n;
+}
+
+function diasDoPeriodo(isoIni, isoFim) {
+  const [a1, m1, d1] = isoIni.split('-').map(Number);
+  const [a2, m2, d2] = isoFim.split('-').map(Number);
+  const fim = Date.UTC(a2, m2 - 1, d2);
+  const dias = [];
+  for (let t = Date.UTC(a1, m1 - 1, d1); t <= fim; t += 86400000) {
+    dias.push(isoUTC(new Date(t)));
+  }
+  return dias;
+}
+
 // ===== CANAIS (aba por canal) =====
 // re = padrão para casar o valor da coluna "canal" / "modalidade"; col = coluna do forecast_outbound
 const MAPA_CANAL = {
@@ -256,6 +318,7 @@ app.get('/api/outbound', async (req, res) => {
     // 7. Forecast e % x Forecast (mês de referência = mês da data inicial do filtro, formato AAAAMM)
     const mesRef = dtInicio.slice(0, 4) + dtInicio.slice(5, 7);
     let forecastPecas = 0;
+    const forecastDiario = [];
     let integVsFcst = '0,00%';
     let prodVsFcst = '0,00%';
     try {
@@ -266,6 +329,29 @@ app.get('/api/outbound', async (req, res) => {
         [mesRef]
       );
       forecastPecas = Number(fc.rows[0]?.forecast || 0);
+
+      // Forecast por dia útil (valor do mês ÷ dias úteis do mês), para todos os meses do período
+      const dias = diasDoPeriodo(dtInicio.slice(0, 10), dtFim.slice(0, 10));
+      const mesesPeriodo = [...new Set(dias.map(d => d.slice(0, 4) + d.slice(5, 7)))];
+      const colForecast = cfgCanal ? cfgCanal.col : 'total';
+      const fm = await pool.query(
+        `SELECT TRIM("mes") AS mes, COALESCE(SUM("${colForecast}"), 0) AS valor
+           FROM "forecast_outbound"
+          WHERE TRIM("mes") = ANY($1::text[])
+          GROUP BY TRIM("mes")`,
+        [mesesPeriodo]
+      );
+      const totalPorMes = {};
+      fm.rows.forEach(r => { totalPorMes[r.mes] = Number(r.valor || 0); });
+
+      dias.forEach(iso => {
+        if (!ehDiaUtil(iso)) return;
+        const mesKey = iso.slice(0, 4) + iso.slice(5, 7);
+        const total = totalPorMes[mesKey] || 0;
+        if (total <= 0) return;
+        const uteis = diasUteisDoMes(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)));
+        forecastDiario.push({ data: iso, valor: Math.round(total / uteis) });
+      });
 
       const pct = await pool.query(
         `SELECT "integrado_x_forecast_" AS integrado, "produzido_x_forecast_" AS produzido
@@ -289,6 +375,7 @@ app.get('/api/outbound', async (req, res) => {
 
     const resposta = {
       forecast_pecas: forecastPecas,
+      forecast_diario: forecastDiario,
       pecas_integradas: Number(imp.total_integradas || 0),
       pedidos_integradas: Number(imp.pedidos_integrados || 0),
       pecas_fluxo: Number(imp.total_fluxo || 0),
