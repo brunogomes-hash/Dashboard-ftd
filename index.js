@@ -106,9 +106,21 @@ app.get('/api/dashboard', async (req, res) => {
   });
 });
 
-// ROUTE 2: OUTBOUND GERAL
+// ===== CANAIS (aba por canal) =====
+// re = padrão para casar o valor da coluna "canal" / "modalidade"; col = coluna do forecast_outbound
+const MAPA_CANAL = {
+  b2b:           { re: '^b2b',        col: 'b2b_total' },
+  b2c:           { re: '^b2c',        col: 'b2c_total' },
+  transferencia: { re: '^transfer',   col: 'transferencias_total' },
+  prefeitura:    { re: '^prefeitura', col: 'prefeitura_total' }
+};
+
+// ROUTE 2: OUTBOUND GERAL (filtro opcional ?canal=b2b|b2c|transferencia|prefeitura)
 app.get('/api/outbound', async (req, res) => {
-  const chaveOutbound = `outbound:${req.query.data_inicio || 'mes'}:${req.query.data_fim || 'atual'}`;
+  const canalKey = String(req.query.canal || '').toLowerCase();
+  const cfgCanal = MAPA_CANAL[canalKey] || null;
+  const canalRe = cfgCanal ? cfgCanal.re : '';
+  const chaveOutbound = `outbound:${canalKey || 'geral'}:${req.query.data_inicio || 'mes'}:${req.query.data_fim || 'atual'}`;
   try {
     const { data_inicio, data_fim } = req.query;
 
@@ -174,7 +186,8 @@ app.get('/api/outbound', async (req, res) => {
       WHERE "importado_em"::timestamp >= $1::timestamp 
         AND "importado_em"::timestamp <= $2::timestamp
         AND COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
-    `, [dtInicio, dtFim]);
+        AND ($3::text = '' OR TRIM("canal"::text) ~* $3::text)
+    `, [dtInicio, dtFim, canalRe]);
 
     const kpisProduzidos = await pool.query(`
       SELECT 
@@ -184,7 +197,8 @@ app.get('/api/outbound', async (req, res) => {
       WHERE "conferido_em"::timestamp >= $1::timestamp 
         AND "conferido_em"::timestamp <= $2::timestamp
         AND COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
-    `, [dtInicio, dtFim]);
+        AND ($3::text = '' OR TRIM("canal"::text) ~* $3::text)
+    `, [dtInicio, dtFim, canalRe]);
 
     const kpisExpedidos = await pool.query(`
       SELECT 
@@ -194,7 +208,8 @@ app.get('/api/outbound', async (req, res) => {
       WHERE "processado_em"::timestamp >= $1::timestamp 
         AND "processado_em"::timestamp <= $2::timestamp
         AND COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
-    `, [dtInicio, dtFim]);
+        AND ($3::text = '' OR TRIM("canal"::text) ~* $3::text)
+    `, [dtInicio, dtFim, canalRe]);
 
     const graficoIntegradas = await pool.query(`
       SELECT 
@@ -204,9 +219,10 @@ app.get('/api/outbound', async (req, res) => {
       WHERE "importado_em"::timestamp >= $1::timestamp 
         AND "importado_em"::timestamp <= $2::timestamp
         AND COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
+        AND ($3::text = '' OR TRIM("canal"::text) ~* $3::text)
       GROUP BY DATE("importado_em")
       ORDER BY DATE("importado_em") ASC
-    `, [dtInicio, dtFim]);
+    `, [dtInicio, dtFim, canalRe]);
 
     // 5. Gráfico: Peças e Notas Faturadas por Data (via conferido_em)
     const graficoFaturados = await pool.query(`
@@ -218,9 +234,10 @@ app.get('/api/outbound', async (req, res) => {
       WHERE "conferido_em"::timestamp >= $1::timestamp 
         AND "conferido_em"::timestamp <= $2::timestamp
         AND COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
+        AND ($3::text = '' OR TRIM("canal"::text) ~* $3::text)
       GROUP BY DATE("conferido_em"::timestamp)
       ORDER BY DATE("conferido_em"::timestamp) ASC
-    `, [dtInicio, dtFim]);
+    `, [dtInicio, dtFim, canalRe]);
 
     // 6. Gráfico: Peças Expedidas por Data (via processado_em)
     const graficoExpedidas = await pool.query(`
@@ -231,9 +248,10 @@ app.get('/api/outbound', async (req, res) => {
       WHERE "processado_em"::timestamp >= $1::timestamp 
         AND "processado_em"::timestamp <= $2::timestamp
         AND COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
+        AND ($3::text = '' OR TRIM("canal"::text) ~* $3::text)
       GROUP BY DATE("processado_em"::timestamp)
       ORDER BY DATE("processado_em"::timestamp) ASC
-    `, [dtInicio, dtFim]);
+    `, [dtInicio, dtFim, canalRe]);
 
     // 7. Forecast e % x Forecast (mês de referência = mês da data inicial do filtro, formato AAAAMM)
     const mesRef = dtInicio.slice(0, 4) + dtInicio.slice(5, 7);
@@ -242,7 +260,7 @@ app.get('/api/outbound', async (req, res) => {
     let prodVsFcst = '0,00%';
     try {
       const fc = await pool.query(
-        `SELECT COALESCE(SUM("total"), 0) AS forecast
+        `SELECT COALESCE(SUM("${cfgCanal ? cfgCanal.col : 'total'}"), 0) AS forecast
            FROM "forecast_outbound"
           WHERE TRIM("mes") = $1`,
         [mesRef]
@@ -252,10 +270,10 @@ app.get('/api/outbound', async (req, res) => {
       const pct = await pool.query(
         `SELECT "integrado_x_forecast_" AS integrado, "produzido_x_forecast_" AS produzido
            FROM "saida_porcentagem"
-          WHERE UPPER(TRIM("modalidade")) = 'TOTAL'
+          WHERE ${cfgCanal ? 'TRIM("modalidade") ~* $2' : `UPPER(TRIM("modalidade")) = 'TOTAL'`}
             AND LEFT(TRIM("data"), 6) = $1
           LIMIT 1`,
-        [mesRef]
+        cfgCanal ? [mesRef, cfgCanal.re] : [mesRef]
       );
       if (pct.rows[0]) {
         integVsFcst = (pct.rows[0].integrado || '0,00%').trim();
@@ -309,8 +327,9 @@ app.get('/api/notas-fluxo', async (req, res) => {
           "nota_fiscal"::text AS nota_fiscal,
           COALESCE(NULLIF(TRIM("status_operacional"), ''), 'SEM STATUS') AS status,
           MAX("canal") AS canal,
-          MAX("destinatário") AS destinatário,
-          MAX(NULLIF(TRIM("qtde_de_produto"::text), '')::numeric) AS skus,
+          MAX("destinatario") AS destinatario,
+          MAX(CASE WHEN TRIM("qtde_de_produto"::text) ~ '^[0-9]+([.,][0-9]+)?$'
+                   THEN REPLACE(TRIM("qtde_de_produto"::text), ',', '.')::numeric END) AS skus,
           COALESCE(SUM("quantidade"), 0) AS pecas,
           COUNT(DISTINCT "pedido_de_venda") AS pedidos
         FROM "itens"
@@ -323,7 +342,7 @@ app.get('/api/notas-fluxo', async (req, res) => {
         SELECT
           nota_fiscal,
           MAX(canal) AS canal,
-          MAX(destinatário) AS destinatário,
+          MAX(destinatario) AS destinatario,
           MAX(skus) AS skus,
           SUM(pecas) AS pecas
         FROM base
@@ -333,7 +352,7 @@ app.get('/api/notas-fluxo', async (req, res) => {
 
     const notas = await pool.query(`
       ${base}
-      SELECT nota_fiscal, status, canal, destinatário, skus, pedidos, pecas
+      SELECT nota_fiscal, status, canal, destinatario, skus, pedidos, pecas
       FROM base
       ORDER BY nota_fiscal DESC
       LIMIT 5000

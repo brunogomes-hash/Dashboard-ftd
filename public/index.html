@@ -85,9 +85,13 @@
 <body>
 
   <div class="tabs-nav">
-    <button class="tab-btn active" onclick="switchTab('estoque')">Estoque</button>
-    <button class="tab-btn" onclick="switchTab('outbound')">Outbound - Geral</button>
-    <button class="tab-btn" onclick="switchTab('notas')">Resumo de NF</button>
+    <button class="tab-btn active" data-tab="estoque" onclick="switchTab('estoque')">Estoque</button>
+    <button class="tab-btn" data-tab="outbound" onclick="switchTab('outbound')">Outbound - Geral</button>
+    <button class="tab-btn" data-tab="b2b" onclick="switchTab('b2b')">B2B</button>
+    <button class="tab-btn" data-tab="b2c" onclick="switchTab('b2c')">B2C</button>
+    <button class="tab-btn" data-tab="transferencia" onclick="switchTab('transferencia')">Transferência</button>
+    <button class="tab-btn" data-tab="prefeitura" onclick="switchTab('prefeitura')">Prefeitura</button>
+    <button class="tab-btn" data-tab="notas" onclick="switchTab('notas')">Resumo de NF</button>
   </div>
 
   <!-- ABA 1: ESTOQUE -->
@@ -183,58 +187,12 @@
     </div>
   </div>
 
-  <!-- ABA 2: OUTBOUND GERAL -->
-  <div id="tab-outbound" class="tab-content">
-    <div class="outbound-header">
-      <div class="logos-box">
-        <div class="logo-badge">LUFT LOGISTICS</div>
-        <div class="logo-sub">FTD educação</div>
-        <div class="header-kpis-group">
-          <div class="header-kpi-card"><span>% SLA</span><strong id="out-sla">100,00%</strong></div>
-          <div class="header-kpi-card"><span>Integrado x Fcst</span><strong id="integ-vs-fcst">0,00%</strong></div>
-          <div class="header-kpi-card"><span>Produzido x Fcst</span><strong id="prod-vs-fcst">0,00%</strong></div>
-        </div>
-      </div>
-      <div class="main-title-outbound">OUTBOUND GERAL</div>
-      <div class="date-filter-box">
-        <span>Filtrar Data:</span>
-        <input type="date" id="data-inicio" class="date-input" onchange="carregarOutbound()">
-        <span>até</span>
-        <input type="date" id="data-fim" class="date-input" onchange="carregarOutbound()">
-      </div>
-    </div>
-
-    <div class="top-kpis-grid">
-      <div class="kpi-card-outbound"><div class="title">Forecast Peças</div><div class="value-main" id="fcst-val">0</div><div class="sub">Pedidos: <strong style="color:#fff" id="fcst-ped">-</strong></div></div>
-      <div class="kpi-card-outbound"><div class="title">Peças Integradas</div><div class="value-main" id="integ-val">0</div><div class="sub">Pedidos: <strong style="color:#fff" id="integ-ped">0</strong></div></div>
-      <div class="kpi-card-outbound"><div class="title">Peças Fluxo</div><div class="value-main" id="fluxo-val">0</div><div class="sub">Pedidos: <strong style="color:#fff" id="fluxo-ped">0</strong></div></div>
-      <div class="kpi-card-outbound"><div class="title">Em Coleta</div><div class="value-main" id="coleta-val">0</div><div class="sub">Pedidos: <strong style="color:#fff" id="coleta-ped">0</strong></div></div>
-      <div class="kpi-card-outbound"><div class="title">Em Tratativa</div><div class="value-main" id="trat-val">0</div><div class="sub">Pedidos: <strong style="color:#fff" id="trat-ped">0</strong></div></div>
-      <div class="kpi-card-outbound"><div class="title">Peças Produzidas</div><div class="value-main" id="prod-val">0</div><div class="sub">Pedidos: <strong style="color:#fff" id="prod-ped">0</strong></div></div>
-      <div class="kpi-card-outbound"><div class="title">Peças Expedidas</div><div class="value-main" id="exp-val">0</div><div class="sub">Pedidos: <strong style="color:#fff" id="exp-ped">0</strong></div></div>
-    </div>
-
-    <div class="outbound-body-grid">
-      <div class="center-charts">
-        <div class="chart-panel">
-          <span class="chart-panel-tag">Peças Integradas por Data</span>
-          <div class="chart-container-outbound"><canvas id="chartIntegradas"></canvas></div>
-        </div>
-        <div class="chart-panel">
-          <span class="chart-panel-tag">Peças e Pedidos Faturados por Data</span>
-          <div class="chart-container-outbound"><canvas id="chartFaturados"></canvas></div>
-        </div>
-        <div class="chart-panel">
-          <span class="chart-panel-tag">Peças Expedidas por Data</span>
-          <div class="chart-container-outbound"><canvas id="chartExpedidas"></canvas></div>
-        </div>
-      </div>
-      <div class="right-chart">
-        <span class="chart-panel-tag">Peças por Data e Status</span>
-        <div class="empty-chart-icon">📊</div>
-      </div>
-    </div>
-  </div>
+  <!-- ABA 2: OUTBOUND (geral + um por canal, montados pelo JavaScript) -->
+  <div id="tab-outbound" class="tab-content"></div>
+  <div id="tab-b2b" class="tab-content"></div>
+  <div id="tab-b2c" class="tab-content"></div>
+  <div id="tab-transferencia" class="tab-content"></div>
+  <div id="tab-prefeitura" class="tab-content"></div>
 
   <!-- ABA 3: RESUMO DE NF -->
   <div id="tab-notas" class="tab-content">
@@ -290,30 +248,109 @@
       return ((parte / total) * 100).toFixed(2).replace('.', ',') + '%';
     }
 
-    function inicializarFiltrosData() {
-      const dIni = document.getElementById('data-inicio');
-      const dFim = document.getElementById('data-fim');
-      if (!dIni.value || !dFim.value) {
-        const hoje = new Date();
-        const ano = hoje.getFullYear();
-        const mes = String(hoje.getMonth() + 1).padStart(2, '0');
-        const ultimoDiaMes = new Date(ano, hoje.getMonth() + 1, 0).getDate();
-        if (!dIni.value) dIni.value = `${ano}-${mes}-01`;
-        if (!dFim.value) dFim.value = `${ano}-${mes}-${String(ultimoDiaMes).padStart(2, '0')}`;
+    // ===== OUTBOUND: geral + um por canal (mesmo layout) =====
+    const OUTBOUND_TABS = [
+      { key: 'outbound',      canal: '',              p: 'og-',   titulo: 'OUTBOUND GERAL' },
+      { key: 'b2b',           canal: 'b2b',           p: 'b2b-',  titulo: 'OUTBOUND B2B' },
+      { key: 'b2c',           canal: 'b2c',           p: 'b2c-',  titulo: 'OUTBOUND B2C' },
+      { key: 'transferencia', canal: 'transferencia', p: 'trf-',  titulo: 'OUTBOUND TRANSFERÊNCIA' },
+      { key: 'prefeitura',    canal: 'prefeitura',    p: 'pref-', titulo: 'OUTBOUND PREFEITURA' }
+    ];
+
+    let dataInicio = '';
+    let dataFim = '';
+
+    function outboundTemplate(p, titulo) {
+      const kpi = (titulo, id, ped) =>
+        `<div class="kpi-card-outbound"><div class="title">${titulo}</div><div class="value-main" id="${p}${id}-val">0</div><div class="sub">Pedidos: <strong style="color:#fff" id="${p}${id}-ped">${ped}</strong></div></div>`;
+      return `
+        <div class="outbound-header">
+          <div class="logos-box">
+            <div class="logo-badge">LUFT LOGISTICS</div>
+            <div class="logo-sub">FTD educação</div>
+            <div class="header-kpis-group">
+              <div class="header-kpi-card"><span>% SLA</span><strong id="${p}out-sla">100,00%</strong></div>
+              <div class="header-kpi-card"><span>Integrado x Fcst</span><strong id="${p}integ-vs-fcst">0,00%</strong></div>
+              <div class="header-kpi-card"><span>Produzido x Fcst</span><strong id="${p}prod-vs-fcst">0,00%</strong></div>
+            </div>
+          </div>
+          <div class="main-title-outbound">${titulo}</div>
+          <div class="date-filter-box">
+            <span>Filtrar Data:</span>
+            <input type="date" class="date-input date-ini" onchange="aoMudarData()">
+            <span>até</span>
+            <input type="date" class="date-input date-fim" onchange="aoMudarData()">
+          </div>
+        </div>
+
+        <div class="top-kpis-grid">
+          ${kpi('Forecast Peças', 'fcst', '-')}
+          ${kpi('Peças Integradas', 'integ', '0')}
+          ${kpi('Peças Fluxo', 'fluxo', '0')}
+          ${kpi('Em Coleta', 'coleta', '0')}
+          ${kpi('Em Tratativa', 'trat', '0')}
+          ${kpi('Peças Produzidas', 'prod', '0')}
+          ${kpi('Peças Expedidas', 'exp', '0')}
+        </div>
+
+        <div class="outbound-body-grid">
+          <div class="center-charts">
+            <div class="chart-panel"><span class="chart-panel-tag">Peças Integradas por Data</span><div class="chart-container-outbound"><canvas id="${p}chartIntegradas"></canvas></div></div>
+            <div class="chart-panel"><span class="chart-panel-tag">Peças e Pedidos Faturados por Data</span><div class="chart-container-outbound"><canvas id="${p}chartFaturados"></canvas></div></div>
+            <div class="chart-panel"><span class="chart-panel-tag">Peças Expedidas por Data</span><div class="chart-container-outbound"><canvas id="${p}chartExpedidas"></canvas></div></div>
+          </div>
+          <div class="right-chart">
+            <span class="chart-panel-tag">Peças por Data e Status</span>
+            <div class="empty-chart-icon">📊</div>
+          </div>
+        </div>`;
+    }
+
+    function montarAbasOutbound() {
+      const hoje = new Date();
+      const ano = hoje.getFullYear();
+      const mes = String(hoje.getMonth() + 1).padStart(2, '0');
+      const ultimo = new Date(ano, hoje.getMonth() + 1, 0).getDate();
+      dataInicio = `${ano}-${mes}-01`;
+      dataFim = `${ano}-${mes}-${String(ultimo).padStart(2, '0')}`;
+
+      OUTBOUND_TABS.forEach(cfg => {
+        document.getElementById('tab-' + cfg.key).innerHTML = outboundTemplate(cfg.p, cfg.titulo);
+      });
+      document.querySelectorAll('.date-ini').forEach(i => i.value = dataInicio);
+      document.querySelectorAll('.date-fim').forEach(i => i.value = dataFim);
+    }
+
+    // Ao mudar a data em qualquer aba, todas as abas ficam com o mesmo período
+    function aoMudarData() {
+      const ativa = document.querySelector('.tab-content.active');
+      const ini = ativa.querySelector('.date-ini');
+      const fim = ativa.querySelector('.date-fim');
+      if (!ini || !fim || !ini.value || !fim.value) return;
+      dataInicio = ini.value;
+      dataFim = fim.value;
+      document.querySelectorAll('.date-ini').forEach(i => i.value = dataInicio);
+      document.querySelectorAll('.date-fim').forEach(i => i.value = dataFim);
+      carregarAbaAtiva();
+    }
+
+    function carregarAbaAtiva() {
+      const ativa = document.querySelector('.tab-content.active');
+      if (!ativa) return;
+      const key = ativa.id.replace('tab-', '');
+      if (key === 'estoque') carregarEstoque();
+      else if (key === 'notas') carregarNotasFluxo();
+      else {
+        const cfg = OUTBOUND_TABS.find(t => t.key === key);
+        if (cfg) carregarOutbound(cfg);
       }
     }
 
     function switchTab(tabName) {
-      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-      document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-
-      const idx = { estoque: 0, outbound: 1, notas: 2 }[tabName];
-      document.querySelectorAll('.tab-btn')[idx].classList.add('active');
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === tabName));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
       document.getElementById('tab-' + tabName).classList.add('active');
-
-      if (tabName === 'estoque') carregarEstoque();
-      else if (tabName === 'outbound') carregarOutbound();
-      else carregarNotasFluxo();
+      carregarAbaAtiva();
     }
 
     function renderizarGrafico(canvasId, labels, capacidade, ocupados, livres) {
@@ -405,52 +442,44 @@
       }
     }
 
-    async function carregarOutbound() {
+    async function carregarOutbound(cfg) {
       try {
-        inicializarFiltrosData();
-        const dataInicio = document.getElementById('data-inicio').value;
-        const dataFim = document.getElementById('data-fim').value;
+        const p = cfg.p;
+        const $ = id => document.getElementById(p + id);
 
-        const res = await fetch(`/api/outbound?data_inicio=${dataInicio}&data_fim=${dataFim}`);
+        const res = await fetch(`/api/outbound?data_inicio=${dataInicio}&data_fim=${dataFim}&canal=${cfg.canal}`);
         const data = await res.json();
         if (!data || data.error) return;
 
-        if (data.sla_pct) document.getElementById('out-sla').innerText = data.sla_pct;
-        if (data.integrado_vs_fcst) document.getElementById('integ-vs-fcst').innerText = data.integrado_vs_fcst;
-        if (data.produzido_vs_fcst) document.getElementById('prod-vs-fcst').innerText = data.produzido_vs_fcst;
+        if (data.sla_pct) $('out-sla').innerText = data.sla_pct;
+        if (data.integrado_vs_fcst) $('integ-vs-fcst').innerText = data.integrado_vs_fcst;
+        if (data.produzido_vs_fcst) $('prod-vs-fcst').innerText = data.produzido_vs_fcst;
 
-        document.getElementById('fcst-val').innerText   = fmt(data.forecast_pecas);
-        document.getElementById('integ-val').innerText  = fmt(data.pecas_integradas);
-        document.getElementById('fluxo-val').innerText  = fmt(data.pecas_fluxo);
-        document.getElementById('coleta-val').innerText = fmt(data.em_coleta);
-        document.getElementById('trat-val').innerText   = fmt(data.em_tratativa);
-        document.getElementById('prod-val').innerText   = fmt(data.pecas_produzidas);
-        document.getElementById('exp-val').innerText    = fmt(data.pecas_expedidas);
+        $('fcst-val').innerText   = fmt(data.forecast_pecas);
+        $('integ-val').innerText  = fmt(data.pecas_integradas);
+        $('fluxo-val').innerText  = fmt(data.pecas_fluxo);
+        $('coleta-val').innerText = fmt(data.em_coleta);
+        $('trat-val').innerText   = fmt(data.em_tratativa);
+        $('prod-val').innerText   = fmt(data.pecas_produzidas);
+        $('exp-val').innerText    = fmt(data.pecas_expedidas);
 
-        document.getElementById('integ-ped').innerText  = fmt(data.pedidos_integradas);
-        document.getElementById('fluxo-ped').innerText  = fmt(data.pedidos_fluxo);
-        document.getElementById('coleta-ped').innerText = fmt(data.pedidos_coleta);
-        document.getElementById('trat-ped').innerText   = fmt(data.pedidos_tratativa);
-        document.getElementById('prod-ped').innerText   = fmt(data.pedidos_produzidas);
-        document.getElementById('exp-ped').innerText    = fmt(data.pedidos_expedidas);
+        $('integ-ped').innerText  = fmt(data.pedidos_integradas);
+        $('fluxo-ped').innerText  = fmt(data.pedidos_fluxo);
+        $('coleta-ped').innerText = fmt(data.pedidos_coleta);
+        $('trat-ped').innerText   = fmt(data.pedidos_tratativa);
+        $('prod-ped').innerText   = fmt(data.pedidos_produzidas);
+        $('exp-ped').innerText    = fmt(data.pedidos_expedidas);
 
-        if (data.pecas_integradas_grafico) {
-          const labelsInteg = data.pecas_integradas_grafico.map(i => {
-            const dt = String(i.data).split('T')[0].split('-');
-            return `${dt[2]}/${dt[1]}`;
-          });
-          const valoresInteg = data.pecas_integradas_grafico.map(i => Number(i.total_pecas || 0));
-          renderBarChart('chartIntegradas', labelsInteg, valoresInteg, '#45a29e', 'Peças Integradas');
-        }
+        const integ = data.pecas_integradas_grafico || [];
+        renderBarChart(p + 'chartIntegradas', integ.map(i => labelData(i.data)),
+          integ.map(i => Number(i.total_pecas || 0)), '#45a29e', 'Peças Integradas');
 
-        // Peças e Notas Faturadas por Data (conferido_em)
         const fat = data.pecas_faturadas_grafico || [];
-        renderLineChart('chartFaturados', fat.map(i => labelData(i.data)),
+        renderLineChart(p + 'chartFaturados', fat.map(i => labelData(i.data)),
           fat.map(i => Number(i.total_pecas || 0)), fat.map(i => Number(i.total_notas || 0)));
 
-        // Peças Expedidas por Data (processado_em)
         const expd = data.pecas_expedidas_grafico || [];
-        renderBarChart('chartExpedidas', expd.map(i => labelData(i.data)),
+        renderBarChart(p + 'chartExpedidas', expd.map(i => labelData(i.data)),
           expd.map(i => Number(i.total_pecas || 0)), '#3B82F6', 'Quantidade');
       } catch (err) {
         console.error('Erro ao carregar outbound:', err);
@@ -538,7 +567,13 @@
       try {
         const res = await fetch('/api/notas-fluxo');
         const data = await res.json();
-        if (!data || data.error) { console.error(data); return; }
+        if (!data || data.error) {
+          console.error(data);
+          const msg = data && (data.detalhe || data.error) ? (data.detalhe || data.error) : 'Resposta inválida do servidor';
+          document.getElementById('nf-notas-body').innerHTML =
+            `<tr><td colspan="7" style="color:#f87171;padding:12px">Erro ao carregar: ${esc(msg)}</td></tr>`;
+          return;
+        }
 
         document.getElementById('nf-total-notas').innerText = fmt(data.total_notas);
         document.getElementById('nf-total-skus').innerText = fmt(data.total_skus);
@@ -557,26 +592,25 @@
         filtrarNotas();
       } catch (err) {
         console.error('Erro ao carregar resumo de NF:', err);
+        document.getElementById('nf-notas-body').innerHTML =
+          `<tr><td colspan="7" style="color:#f87171;padding:12px">Erro ao carregar: ${esc(err.message)}</td></tr>`;
       }
     }
 
     function filtrarNotas() {
       const termo = (document.getElementById('nf-busca').value || '').toLowerCase();
       const lista = notasFluxoCache.filter(n =>
-        [n.nota_fiscal, n.canal, n.destinatário, n.status]
+        [n.nota_fiscal, n.canal, n.destinatario, n.status]
           .some(v => String(v ?? '').toLowerCase().includes(termo))
       );
       document.getElementById('nf-notas-body').innerHTML = lista.map(n =>
-        `<tr><td>${esc(n.nota_fiscal)}</td><td>${esc(n.canal)}</td><td>${esc(n.destinatário)}</td><td>${esc(n.status)}</td><td>${fmt(n.skus)}</td><td>${fmt(n.pedidos)}</td><td>${fmt(n.pecas)}</td></tr>`
+        `<tr><td>${esc(n.nota_fiscal)}</td><td>${esc(n.canal)}</td><td>${esc(n.destinatario)}</td><td>${esc(n.status)}</td><td>${fmt(n.skus)}</td><td>${fmt(n.pedidos)}</td><td>${fmt(n.pecas)}</td></tr>`
       ).join('');
     }
 
+    montarAbasOutbound();
     carregarEstoque();
-    setInterval(() => {
-      if (document.getElementById('tab-estoque').classList.contains('active')) carregarEstoque();
-      if (document.getElementById('tab-outbound').classList.contains('active')) carregarOutbound();
-      if (document.getElementById('tab-notas').classList.contains('active')) carregarNotasFluxo();
-    }, 30000);
+    setInterval(carregarAbaAtiva, 30000);
   </script>
 </body>
 </html>
