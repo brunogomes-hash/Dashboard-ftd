@@ -94,16 +94,156 @@ const pastaSite = fs.existsSync(path.join(__dirname, 'public', 'index.html'))
 app.use(express.static(pastaSite));
 app.get('/', (req, res) => res.sendFile(path.join(pastaSite, 'index.html')));
 
-// ROUTE 1: ESTOQUE (TEMPORÁRIA)
-// Devolve zeros até a gente refazer essa rota com as tabelas do estoque
+// ROUTE 1: ESTOQUE
+// - Posições e unidades (capacidade / ocupadas / livres) vêm da tabela "capacidade_armazem"
+// - SKUs e peças vêm da tabela "estoque" (colunas código do produto e Estoque)
+const normNome = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+const aspas = nome => '"' + String(nome).replace(/"/g, '""') + '"';
+
+let infoEstoque = null;
+let infoEstoqueEm = 0;
+
+// Descobre os nomes reais das colunas da tabela "estoque" (aceita acento e maiúsculas)
+async function detectarColunasEstoque() {
+  const completo = infoEstoque && infoEstoque.colSku && infoEstoque.colQtd && infoEstoque.colCategoria;
+  if (infoEstoque && (completo || Date.now() - infoEstoqueEm < 5 * 60 * 1000)) return infoEstoque;
+
+  const r = await pool.query(
+    `SELECT column_name FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'estoque'
+      ORDER BY ordinal_position`
+  );
+  const colunas = r.rows.map(x => x.column_name);
+  const achar = fn => colunas.find(c => fn(normNome(c)));
+
+  const colSku = achar(n => n === 'codigo_do_produto') || achar(n => n.includes('codigo') && n.includes('produto'));
+  const colQtd = achar(n => n === 'estoque') || achar(n => n === 'quantidade');
+
+  // Coluna que separa Picking de Pulmão: precisa conter valores com "pulm"
+  const prioridade = ['categoria_estrutura', 'categoria', 'estrutura', 'tipo_estrutura', 'tipo_endereco', 'area', 'zona'];
+  const candidatas = [...new Set([
+    ...prioridade.map(p => colunas.find(c => normNome(c) === p)).filter(Boolean),
+    ...colunas.filter(c => /categoria|estrutura|endereco|local|area|zona/.test(normNome(c)))
+  ])].slice(0, 8);
+
+  let colCategoria = null;
+  for (const c of candidatas) {
+    try {
+      const t = await pool.query(`SELECT 1 FROM "estoque" WHERE ${aspas(c)}::text ILIKE '%pulm%' LIMIT 1`);
+      if (t.rows.length) { colCategoria = c; break; }
+    } catch (e) { /* ignora e tenta a próxima */ }
+  }
+
+  infoEstoque = { colunas, colSku, colQtd, colCategoria };
+  infoEstoqueEm = Date.now();
+  return infoEstoque;
+}
+
 app.get('/api/dashboard', async (req, res) => {
-  res.json({
-    picking: { total_pecas: 0, total_skus: 0, capacidade: 0, ocupadas: 0, vazias: 0 },
-    pulmao:  { total_pecas: 0, total_skus: 0, capacidade: 0, ocupadas: 0, vazias: 0 },
-    gerais:  { total_estoque: 0, total_skus: 0, total_posicoes: 0, posicoes_ocupadas: 0, posicoes_vazias: 0 },
-    graficos: [],
-    ultima_atualizacao: new Date().toLocaleString('pt-BR')
-  });
+  try {
+    // 1) Capacidade por categoria (posições e unidades)
+    const cap = await pool.query(`
+      SELECT
+        TRIM("categoria_estrutura") AS categoria,
+        COALESCE(SUM("locais_capacidade_qtd"), 0)          AS posicoes_capacidade,
+        COALESCE(SUM("locais_ocupados_qtd"), 0)            AS posicoes_ocupadas,
+        COALESCE(SUM("locais_livres_qtd"), 0)              AS posicoes_livres,
+        COALESCE(SUM("capacidade_total_unidades"), 0)      AS pecas_capacidade,
+        COALESCE(SUM("ocupados_unidades_disponiveis"), 0)  AS pecas_ocupadas,
+        COALESCE(SUM("livres_unidades"), 0)                AS pecas_livres
+      FROM "capacidade_armazem"
+      WHERE "categoria_estrutura" IS NOT NULL
+        AND TRIM("categoria_estrutura") <> ''
+        AND TRIM("categoria_estrutura") NOT ILIKE 'total%'
+      GROUP BY TRIM("categoria_estrutura")
+      ORDER BY TRIM("categoria_estrutura")
+    `);
+
+    const linhas = cap.rows.map(r => ({
+      categoria: r.categoria,
+      posicoes_capacidade: Number(r.posicoes_capacidade),
+      posicoes_ocupadas: Number(r.posicoes_ocupadas),
+      posicoes_livres: Number(r.posicoes_livres),
+      pecas_capacidade: Number(r.pecas_capacidade),
+      pecas_ocupadas: Number(r.pecas_ocupadas),
+      pecas_livres: Number(r.pecas_livres)
+    }));
+    const ehPulmao = l => normNome(l.categoria).includes('pulm');
+    const pulmaoRows = linhas.filter(ehPulmao);
+    const pickingRows = linhas.filter(l => !ehPulmao(l));
+    const soma = (arr, campo) => arr.reduce((t, l) => t + l[campo], 0);
+
+    // 2) SKUs e peças a partir da tabela "estoque"
+    let totalSkus = 0, totalPecas = 0;
+    let skuPick = null, pecasPick = null, skuPul = null, pecasPul = null;
+    let diag = {};
+    try {
+      const info = await detectarColunasEstoque();
+      diag = { colunas_estoque: info.colunas, col_sku: info.colSku || null, col_qtd: info.colQtd || null, col_categoria: info.colCategoria || null };
+
+      if (info.colSku && info.colQtd) {
+        const qtd = `(CASE WHEN TRIM(${aspas(info.colQtd)}::text) ~ '^-?[0-9]+([.,][0-9]+)?$'
+                          THEN REPLACE(TRIM(${aspas(info.colQtd)}::text), ',', '.')::numeric END)`;
+        const base = `
+          SELECT TRIM(${aspas(info.colSku)}::text) AS sku, ${qtd} AS q
+                 ${info.colCategoria ? `, (${aspas(info.colCategoria)}::text ILIKE '%pulm%') AS pulmao` : ''}
+          FROM "estoque"`;
+
+        const tot = await pool.query(`
+          SELECT COUNT(DISTINCT sku) FILTER (WHERE q > 0 AND sku <> '') AS skus,
+                 COALESCE(SUM(q) FILTER (WHERE q > 0), 0) AS pecas
+          FROM (${base}) t`);
+        totalSkus = Number(tot.rows[0]?.skus || 0);
+        totalPecas = Number(tot.rows[0]?.pecas || 0);
+
+        if (info.colCategoria) {
+          const sp = await pool.query(`
+            SELECT COALESCE(pulmao, false) AS pulmao,
+                   COUNT(DISTINCT sku) FILTER (WHERE q > 0 AND sku <> '') AS skus,
+                   COALESCE(SUM(q) FILTER (WHERE q > 0), 0) AS pecas
+            FROM (${base}) t
+            GROUP BY 1`);
+          skuPick = 0; pecasPick = 0; skuPul = 0; pecasPul = 0;
+          sp.rows.forEach(r => {
+            if (r.pulmao) { skuPul = Number(r.skus); pecasPul = Number(r.pecas); }
+            else { skuPick = Number(r.skus); pecasPick = Number(r.pecas); }
+          });
+        }
+      }
+    } catch (e) {
+      console.error('Aviso: não foi possível ler a tabela estoque:', e.message);
+      diag = { erro_estoque: e.message };
+    }
+
+    const capPick = soma(pickingRows, 'posicoes_capacidade');
+    const ocupPick = soma(pickingRows, 'posicoes_ocupadas');
+    const vazPick = soma(pickingRows, 'posicoes_livres');
+    const capPul = soma(pulmaoRows, 'posicoes_capacidade');
+    const ocupPul = soma(pulmaoRows, 'posicoes_ocupadas');
+    const vazPul = soma(pulmaoRows, 'posicoes_livres');
+
+    const resposta = {
+      picking: { total_pecas: pecasPick, total_skus: skuPick, capacidade: capPick, ocupadas: ocupPick, vazias: vazPick },
+      pulmao:  { total_pecas: pecasPul,  total_skus: skuPul,  capacidade: capPul,  ocupadas: ocupPul,  vazias: vazPul },
+      gerais: {
+        total_estoque: totalPecas,
+        total_skus: totalSkus,
+        total_posicoes: capPick + capPul,
+        posicoes_ocupadas: ocupPick + ocupPul,
+        posicoes_vazias: vazPick + vazPul
+      },
+      graficos: linhas,
+      graficos_picking: pickingRows,
+      graficos_pulmao: pulmaoRows,
+      diagnostico: diag,
+      ultima_atualizacao: new Date().toLocaleString('pt-BR')
+    };
+
+    await responderComCache(res, 'estoque', resposta,
+      d => d.gerais.total_posicoes === 0 && d.gerais.total_estoque === 0);
+  } catch (err) {
+    await erroComCache(res, 'estoque', err, 'Erro Estoque');
+  }
 });
 
 // ===== FORECAST DIÁRIO (dias úteis = segunda a sábado, sem feriados) =====
