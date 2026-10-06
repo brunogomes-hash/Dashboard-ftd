@@ -118,6 +118,8 @@ async function detectarColunasEstoque() {
 
   const colSku = achar(n => n === 'codigo_do_produto') || achar(n => n.includes('codigo') && n.includes('produto'));
   const colQtd = achar(n => n === 'estoque') || achar(n => n === 'quantidade');
+  const colEstado = achar(n => n === 'estado');
+  const colArea = achar(n => n === 'area');
 
   // Coluna que separa Picking de Pulmão: precisa conter valores com "pulm"
   const prioridade = ['categoria_estrutura', 'categoria', 'estrutura', 'tipo_estrutura', 'tipo_endereco', 'area', 'zona'];
@@ -134,7 +136,7 @@ async function detectarColunasEstoque() {
     } catch (e) { /* ignora e tenta a próxima */ }
   }
 
-  infoEstoque = { colunas, colSku, colQtd, colCategoria };
+  infoEstoque = { colunas, colSku, colQtd, colCategoria, colEstado, colArea };
   infoEstoqueEm = Date.now();
   return infoEstoque;
 }
@@ -177,17 +179,23 @@ app.get('/api/dashboard', async (req, res) => {
     let totalSkus = 0, totalPecas = 0;
     let skuPick = null, pecasPick = null, skuPul = null, pecasPul = null;
     let diag = {};
+    let depositos = [];
+    let foraSistema = [];
     try {
       const info = await detectarColunasEstoque();
-      diag = { colunas_estoque: info.colunas, col_sku: info.colSku || null, col_qtd: info.colQtd || null, col_categoria: info.colCategoria || null };
+      diag = { colunas_estoque: info.colunas, col_sku: info.colSku || null, col_qtd: info.colQtd || null, col_categoria: info.colCategoria || null, col_estado: info.colEstado || null, col_area: info.colArea || null };
+      if (!info.colEstado) diag.aviso = 'Coluna Estado não encontrada na tabela estoque: o filtro Estado = Normal NÃO foi aplicado.';
 
       if (info.colSku && info.colQtd) {
         const qtd = `(CASE WHEN TRIM(${aspas(info.colQtd)}::text) ~ '^-?[0-9]+([.,][0-9]+)?$'
                           THEN REPLACE(TRIM(${aspas(info.colQtd)}::text), ',', '.')::numeric END)`;
+        // Só entra no estoque o que estiver com Estado = Normal
+        const filtroEstado = info.colEstado ? `WHERE UPPER(TRIM(${aspas(info.colEstado)}::text)) = 'NORMAL'` : '';
         const base = `
           SELECT TRIM(${aspas(info.colSku)}::text) AS sku, ${qtd} AS q
                  ${info.colCategoria ? `, (${aspas(info.colCategoria)}::text ILIKE '%pulm%') AS pulmao` : ''}
-          FROM "estoque"`;
+                 ${info.colArea ? `, COALESCE(NULLIF(TRIM(${aspas(info.colArea)}::text), ''), 'SEM ÁREA') AS area` : ''}
+          FROM "estoque" ${filtroEstado}`;
 
         const tot = await pool.query(`
           SELECT COUNT(DISTINCT sku) FILTER (WHERE q > 0 AND sku <> '') AS skus,
@@ -209,10 +217,38 @@ app.get('/api/dashboard', async (req, res) => {
             else { skuPick = Number(r.skus); pecasPick = Number(r.pecas); }
           });
         }
+
+        // Peças por Depósitos (coluna Área), só Estado = Normal
+        if (info.colArea) {
+          const dp = await pool.query(`
+            SELECT area, COALESCE(SUM(q), 0) AS pecas
+            FROM (${base}) t
+            WHERE q > 0
+            GROUP BY area
+            ORDER BY pecas DESC
+            LIMIT 12`);
+          depositos = dp.rows.map(r => ({ area: r.area, pecas: Number(r.pecas) }));
+        }
       }
     } catch (e) {
       console.error('Aviso: não foi possível ler a tabela estoque:', e.message);
       diag = { erro_estoque: e.message };
+    }
+
+    // 3) Posições ocupadas fora do sistema (tabela locais_ftd: ativo = S, conta Local por Status)
+    try {
+      const fs2 = await pool.query(`
+        SELECT TRIM("status") AS status, COUNT(DISTINCT "local") AS qtd
+        FROM "locais_ftd"
+        WHERE UPPER(TRIM("ativo"::text)) = 'S'
+          AND "status" IS NOT NULL
+          AND TRIM("status") <> ''
+        GROUP BY TRIM("status")
+        ORDER BY qtd DESC
+        LIMIT 10`);
+      foraSistema = fs2.rows.map(r => ({ status: r.status, qtd: Number(r.qtd) }));
+    } catch (e) {
+      console.error('Aviso: não foi possível ler locais_ftd:', e.message);
     }
 
     const capPick = soma(pickingRows, 'posicoes_capacidade');
@@ -235,6 +271,8 @@ app.get('/api/dashboard', async (req, res) => {
       graficos: linhas,
       graficos_picking: pickingRows,
       graficos_pulmao: pulmaoRows,
+      fora_sistema: foraSistema,
+      depositos: depositos,
       diagnostico: diag,
       ultima_atualizacao: new Date().toLocaleString('pt-BR')
     };
