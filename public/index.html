@@ -78,6 +78,25 @@
     .col-direita .section-card { flex: 1 1 0; }
     .col-direita .chart-header { margin-bottom: 6px; }
 
+    /* ESTOQUE: logos preenchendo toda a altura da faixa preta */
+    .header.header-logos { padding: 0 18px 0 0; overflow: hidden; }
+    .header.header-logos .logos-box { align-self: stretch; gap: 0; }
+    .header.header-logos .logo-box-img { border-radius: 0; padding: 0 24px; align-self: stretch; }
+    .header.header-logos .logo-box-img img { height: 58px; }
+    .header.header-logos .header-title { margin-left: 24px; }
+    .header.header-logos > div:last-child { padding: 8px 0; }
+
+    /* OUTBOUND - EXPEDIÇÃO */
+    .top-kpis-grid.quatro { grid-template-columns: repeat(4, 1fr); }
+    .top-kpis-grid.quatro .kpi-card-outbound { height: 96px; align-items: center; justify-content: center; text-align: center; gap: 6px; }
+    .top-kpis-grid.quatro .title { font-size: 15px; }
+    .top-kpis-grid.quatro .value-main { font-size: 36px; color: #fff; font-weight: 500; }
+    .sub-row { display: flex; gap: 8px; flex: 1 1 0; min-height: 0; }
+    .sub-row .chart-panel { flex: 1 1 0; }
+    .sub-row .chart-panel:first-child { flex: 0.7 1 0; }
+    .right-stack { display: flex; flex-direction: column; gap: 8px; height: 100%; min-height: 0; }
+    .right-stack .chart-panel { flex: 1 1 0; }
+
     /* APRESENTAÇÃO */
     .tabs-nav { flex-wrap: wrap; align-items: center; }
     .apresentacao { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 11px; color: #888; transition: opacity .3s; }
@@ -113,6 +132,7 @@
     <button class="tab-btn" data-tab="b2c" onclick="switchTab('b2c', true)">B2C</button>
     <button class="tab-btn" data-tab="transferencia" onclick="switchTab('transferencia', true)">Transferência</button>
     <button class="tab-btn" data-tab="prefeitura" onclick="switchTab('prefeitura', true)">Prefeitura</button>
+    <button class="tab-btn" data-tab="expedicao" onclick="switchTab('expedicao', true)">Outbound - Expedição</button>
     <button class="tab-btn" data-tab="notas" onclick="switchTab('notas', true)">Resumo de NF</button>
 
     <div class="apresentacao" title="Modo apresentação">
@@ -131,7 +151,7 @@
 
   <!-- ABA 1: ESTOQUE -->
   <div id="tab-estoque" class="tab-content">
-    <div class="header">
+    <div class="header header-logos">
       <div class="logos-box"><div class="logo-box-img luft"><img class="logo-luft" alt="Luft Logistics"></div><div class="logo-box-img ftd"><img class="logo-ftd" alt="FTD Educação"></div><span class="header-title" style="margin-left:10px">ESTOQUE - FTD FILIAL</span></div>
       <div>
         <div class="kpi-top-container">
@@ -241,6 +261,7 @@
   <div id="tab-prefeitura" class="tab-content"></div>
   <div id="tab-recebimento" class="tab-content active"></div>
   <div id="tab-devolucao" class="tab-content"></div>
+  <div id="tab-expedicao" class="tab-content"></div>
 
   <!-- ABA 3: RESUMO DE NF -->
   <div id="tab-notas" class="tab-content">
@@ -363,6 +384,54 @@
         </div>`;
     }
 
+    const EXPEDICAO_TAB = { key: 'expedicao', p: 'exp-', titulo: 'OUTBOUND - EXPEDIÇÃO' };
+    const SERIES_STATUS_EXPEDICAO = [
+      { nome: 'Expedido',   cor: '#4C5BD4', campo: 'expedido' },
+      { nome: 'Sem coleta', cor: '#3BB8B0', campo: 'sem_coleta' }
+    ];
+    const PALETA_TRANSP = ['#6366F1', '#FB923C', '#C084FC', '#A3E635', '#38BDF8', '#F472B6', '#FACC15', '#2DD4BF'];
+
+    function expedicaoTemplate(p, titulo) {
+      const kpi = (nome, id) =>
+        `<div class="kpi-card-outbound"><div class="title">${nome}</div><div class="value-main" id="${p}${id}-val">0</div></div>`;
+      return `
+        <div class="outbound-header">
+          <div class="logos-box">
+            <div class="logo-box-img luft"><img class="logo-luft" alt="Luft Logistics"></div>
+            <div class="logo-box-img ftd"><img class="logo-ftd" alt="FTD Educação"></div>
+            <div class="update-time" style="text-align:left;margin:0 0 0 6px">Última Atualização:<br><span id="${p}atualizacao">-</span></div>
+          </div>
+          <div class="main-title-outbound">${titulo}</div>
+          <div class="date-filter-box">
+            <span>Filtrar Data:</span>
+            <input type="date" class="date-input date-ini" onchange="aoMudarData()">
+            <span>até</span>
+            <input type="date" class="date-input date-fim" onchange="aoMudarData()">
+          </div>
+        </div>
+
+        <div class="top-kpis-grid quatro">
+          ${kpi('Transportadoras', 'transp')}
+          ${kpi('Peças Ag. Carregamento', 'pecas')}
+          ${kpi('NF´s Ag. Carregamento', 'nfs')}
+          ${kpi('Coletas Ag. Carregamento', 'coletas')}
+        </div>
+
+        <div class="outbound-body-grid">
+          <div class="center-charts">
+            <div class="chart-panel" style="flex: 1.25 1 0"><span class="chart-panel-tag">Transportadoras/Dia - Ag. Carregamento</span><div class="chart-container-outbound"><canvas id="${p}chartTranspDia"></canvas></div></div>
+            <div class="sub-row">
+              <div class="chart-panel"><span class="chart-panel-tag">Peças Expedidas - Mês</span><div class="chart-container-outbound"><canvas id="${p}chartExpMes"></canvas></div></div>
+              <div class="chart-panel"><span class="chart-panel-tag">Peças Expedidas por Transportadora - Mês</span><div class="chart-container-outbound"><canvas id="${p}chartExpTransp"></canvas></div></div>
+            </div>
+          </div>
+          <div class="right-stack">
+            <div class="chart-panel"><span class="chart-panel-tag">NF´s por Dia</span><div class="chart-container-outbound"><canvas id="${p}chartNfsDia"></canvas></div></div>
+            <div class="chart-panel"><span class="chart-panel-tag">Coletas por Dia</span><div class="chart-container-outbound"><canvas id="${p}chartColetasDia"></canvas></div></div>
+          </div>
+        </div>`;
+    }
+
     let dataInicio = '';
     let dataFim = '';
 
@@ -383,6 +452,7 @@
               <div class="header-kpi-card"><span>Integrado x Fcst</span><strong id="${p}integ-vs-fcst">0,00%</strong></div>
               <div class="header-kpi-card"><span>Produzido x Fcst</span><strong id="${p}prod-vs-fcst">0,00%</strong></div>
             </div>
+            <div class="update-time" style="text-align:left;margin:0 0 0 6px">Última Atualização:<br><span id="${p}atualizacao">-</span></div>
           </div>
           <div class="main-title-outbound">${titulo}</div>
           <div class="date-filter-box">
@@ -430,6 +500,7 @@
       INBOUND_TABS.forEach(cfg => {
         document.getElementById('tab-' + cfg.key).innerHTML = inboundTemplate(cfg.p, cfg.titulo);
       });
+      document.getElementById('tab-expedicao').innerHTML = expedicaoTemplate(EXPEDICAO_TAB.p, EXPEDICAO_TAB.titulo);
       document.querySelectorAll('.date-ini').forEach(i => i.value = dataInicio);
       document.querySelectorAll('.date-fim').forEach(i => i.value = dataFim);
     }
@@ -458,6 +529,7 @@
         const cfgIn = INBOUND_TABS.find(t => t.key === key);
         if (cfg) carregarOutbound(cfg);
         else if (cfgIn) carregarInbound(cfgIn);
+        else if (key === 'expedicao') carregarExpedicao(EXPEDICAO_TAB);
       }
     }
 
@@ -689,6 +761,7 @@
         const data = await res.json();
         if (!data || data.error) return;
 
+        $('atualizacao').innerText = data.ultima_atualizacao || '-';
         if (data.sla_pct) $('out-sla').innerText = data.sla_pct;
         if (data.integrado_vs_fcst) $('integ-vs-fcst').innerText = data.integrado_vs_fcst;
         if (data.produzido_vs_fcst) $('prod-vs-fcst').innerText = data.produzido_vs_fcst;
@@ -721,6 +794,75 @@
         renderBarChart(p + 'chartExpedidas', sExp.labels, sExp.valores, '#3B82F6', 'Quantidade', sExp.meta);
       } catch (err) {
         console.error('Erro ao carregar outbound:', err);
+      }
+    }
+
+    // Barras agrupadas: uma cor por transportadora em cada data
+    function renderGroupedChart(canvasId, linhas) {
+      const canvas = document.getElementById(canvasId);
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (window[canvasId + 'Obj']) window[canvasId + 'Obj'].destroy();
+
+      const iso = d => String(d).split('T')[0];
+      const datas = Array.from(new Set((linhas || []).map(l => iso(l.data)))).sort();
+      const totais = {};
+      (linhas || []).forEach(l => { totais[l.transportadora] = (totais[l.transportadora] || 0) + Number(l.pecas || 0); });
+      const transps = Object.keys(totais).sort((a, b) => totais[b] - totais[a]);
+      const valor = {};
+      (linhas || []).forEach(l => { valor[iso(l.data) + '|' + l.transportadora] = Number(l.pecas || 0); });
+
+      window[canvasId + 'Obj'] = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: datas.map(labelData),
+          datasets: transps.map((t, i) => ({
+            label: t,
+            data: datas.map(d => valor[d + '|' + t] || 0),
+            backgroundColor: PALETA_TRANSP[i % PALETA_TRANSP.length],
+            borderRadius: 3,
+            barPercentage: 0.9,
+            categoryPercentage: 0.8
+          }))
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          layout: { padding: { top: 22, right: 10 } },
+          plugins: {
+            legend: { display: true, position: 'top', align: 'start', labels: { color: '#ddd', boxWidth: 22, boxHeight: 10, font: { size: 11 } } },
+            datalabels: { color: '#fff', anchor: 'end', align: 'top', clip: false, font: { weight: 'bold', size: 11 }, formatter: v => v > 0 ? fmt(v) : '' }
+          },
+          scales: {
+            x: { ticks: { color: '#ddd', font: { size: 11 } }, grid: { display: false } },
+            y: { beginAtZero: true, grace: '15%', ticks: { color: '#888', font: { size: 11 } }, grid: { color: '#222' } }
+          }
+        }
+      });
+    }
+
+    async function carregarExpedicao(cfg) {
+      try {
+        const p = cfg.p;
+        const $ = id => document.getElementById(p + id);
+        const res = await fetch(`/api/expedicao?data_inicio=${dataInicio}&data_fim=${dataFim}`);
+        const data = await res.json();
+        if (!data || data.error) return;
+
+        $('atualizacao').innerText = data.ultima_atualizacao || '-';
+        $('transp-val').innerText = fmt(data.transportadoras);
+        $('pecas-val').innerText = fmt(data.pecas_ag_carregamento);
+        $('nfs-val').innerText = fmt(data.nfs_ag_carregamento);
+        $('coletas-val').innerText = fmt(data.coletas_ag_carregamento);
+
+        renderGroupedChart(p + 'chartTranspDia', data.transp_dia);
+        renderBarChart(p + 'chartExpMes', ['Expedido'], [Number(data.expedidas_mes || 0)], '#5E6AE2', 'Expedido');
+        const et = data.expedidas_transportadora || [];
+        renderBarChart(p + 'chartExpTransp', et.map(t => t.transportadora), et.map(t => Number(t.pecas || 0)), '#5E6AE2', 'Peças');
+        renderStatusChart(p + 'chartNfsDia', data.nfs_dia, SERIES_STATUS_EXPEDICAO);
+        renderStatusChart(p + 'chartColetasDia', data.coletas_dia, SERIES_STATUS_EXPEDICAO);
+      } catch (err) {
+        console.error('Erro ao carregar expedição:', err);
       }
     }
 

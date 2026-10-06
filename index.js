@@ -14,6 +14,49 @@ const pool = new Pool({
 });
 
 
+// ===== ÚLTIMA ATUALIZAÇÃO (vem da tabela entrada_consolidada, coluna "última_atualização") =====
+const FUSO = 'America/Sao_Paulo';
+const agoraBR = () => new Date().toLocaleString('pt-BR', { timeZone: FUSO });
+
+function lerAtualizacao(txt) {
+  const t = String(txt || '').trim();
+  let m = t.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?/);
+  if (m) return { y: +m[1], mo: +m[2], d: +m[3], h: +m[4], mi: +m[5], s: +(m[6] || 0) };
+  m = t.match(/^(\d{2})\/(\d{2})\/(\d{4})[,\s]+(\d{2}):(\d{2})(?::(\d{2}))?/);
+  if (m) return { y: +m[3], mo: +m[2], d: +m[1], h: +m[4], mi: +m[5], s: +(m[6] || 0) };
+  return null;
+}
+
+let atualizacaoCache = { valor: null, em: 0 };
+async function ultimaAtualizacao() {
+  if (atualizacaoCache.valor && Date.now() - atualizacaoCache.em < 30000) return atualizacaoCache.valor;
+  atualizacaoCache.em = Date.now();
+  try {
+    const r = await pool.query(`
+      SELECT DISTINCT TRIM("última_atualização") AS v
+      FROM "entrada_consolidada"
+      WHERE "última_atualização" IS NOT NULL AND TRIM("última_atualização") <> ''
+      LIMIT 500`);
+    let melhor = null, melhorT = -1;
+    r.rows.forEach(({ v }) => {
+      const p = lerAtualizacao(v);
+      if (p) {
+        const t = Date.UTC(p.y, p.mo - 1, p.d, p.h, p.mi, p.s);
+        if (t > melhorT) { melhorT = t; melhor = p; }
+      }
+    });
+    const dois = n => String(n).padStart(2, '0');
+    if (melhor) {
+      atualizacaoCache.valor = `${dois(melhor.d)}/${dois(melhor.mo)}/${melhor.y}, ${dois(melhor.h)}:${dois(melhor.mi)}:${dois(melhor.s)}`;
+    } else if (r.rows[0]) {
+      atualizacaoCache.valor = r.rows[0].v;
+    }
+  } catch (e) {
+    console.error('Aviso: não foi possível ler a última atualização:', e.message);
+  }
+  return atualizacaoCache.valor || agoraBR();
+}
+
 // ===== CACHE DO ÚLTIMO RESULTADO BOM =====
 // Quando o banco está sendo recarregado (tabela vazia), o site continua mostrando
 // o último resultado válido. Guarda na memória e numa tabela própria "dashboard_cache"
@@ -36,7 +79,7 @@ async function iniciarCache() {
 iniciarCache();
 
 async function salvarCache(chave, resposta) {
-  const hora = new Date().toLocaleString('pt-BR');
+  const hora = agoraBR();
   memoria[chave] = { resposta, hora };
   try {
     await pool.query(
@@ -70,7 +113,7 @@ async function responderComCache(res, chave, resposta, estaVazio) {
   }
   const anterior = await lerCache(chave);
   if (anterior) {
-    return res.json({ ...anterior.resposta, ultima_atualizacao: anterior.hora, dados_anteriores: true });
+    return res.json({ ...anterior.resposta, dados_anteriores: true });
   }
   return res.json(resposta);
 }
@@ -80,7 +123,7 @@ async function erroComCache(res, chave, err, titulo) {
   console.error(titulo + ':', err);
   const anterior = await lerCache(chave);
   if (anterior) {
-    return res.json({ ...anterior.resposta, ultima_atualizacao: anterior.hora, dados_anteriores: true });
+    return res.json({ ...anterior.resposta, dados_anteriores: true });
   }
   return res.status(500).json({ error: titulo, detalhe: err.message });
 }
@@ -284,7 +327,7 @@ app.get('/api/dashboard', async (req, res) => {
       fora_sistema: foraSistema,
       depositos: depositos,
       diagnostico: diag,
-      ultima_atualizacao: new Date().toLocaleString('pt-BR')
+      ultima_atualizacao: await ultimaAtualizacao()
     };
 
     await responderComCache(res, 'estoque', resposta,
@@ -609,7 +652,7 @@ app.get('/api/outbound', async (req, res) => {
       sla_pct: '100,00%',
       integrado_vs_fcst: integVsFcst,
       produzido_vs_fcst: prodVsFcst,
-      ultima_atualizacao: new Date().toLocaleString('pt-BR')
+      ultima_atualizacao: await ultimaAtualizacao()
     };
 
     await responderComCache(res, chaveOutbound, resposta,
@@ -700,7 +743,7 @@ app.get('/api/notas-fluxo', async (req, res) => {
       por_status: porStatus.rows,
       por_canal: porCanal.rows,
       notas: notas.rows,
-      ultima_atualizacao: new Date().toLocaleString('pt-BR')
+      ultima_atualizacao: await ultimaAtualizacao()
     };
 
     await responderComCache(res, 'resumo-nf', resposta, d => d.total_notas === 0);
@@ -863,12 +906,129 @@ app.get('/api/inbound', async (req, res) => {
       pecas_status_grafico: gStatus.rows,
       forecast_diario: forecastDiario,
       status_processos: statusProcessos,
-      ultima_atualizacao: new Date().toLocaleString('pt-BR')
+      ultima_atualizacao: await ultimaAtualizacao()
     };
 
     await responderComCache(res, chave, resposta, d => d.pecas_recebidas === 0 && d.pecas_armazenadas === 0);
   } catch (err) {
     await erroComCache(res, chave, err, 'Erro Entrada');
+  }
+});
+
+// ROUTE 5: OUTBOUND - EXPEDIÇÃO
+// Ag. Carregamento = status "Aguardando Expedição" (situação atual). Gráficos de expedidas usam processado_em.
+let infoItens = null;
+let infoItensEm = 0;
+
+async function detectarColunasItens() {
+  if (infoItens && Date.now() - infoItensEm < 10 * 60 * 1000) return infoItens;
+  const r = await pool.query(
+    `SELECT column_name FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'itens' ORDER BY ordinal_position`
+  );
+  const colunas = r.rows.map(x => x.column_name);
+  const achar = fn => colunas.find(c => fn(normNome(c)));
+
+  const colTransp = achar(n => n === 'transportadora') || achar(n => n.includes('transportadora')) || achar(n => n.includes('transportador'));
+
+  const candidatas = colunas.filter(c => {
+    const n = normNome(c);
+    return n.includes('coleta') && !n.endsWith('_em') && !n.includes('status') && !n.includes('data');
+  });
+  const colColeta = candidatas.find(c => normNome(c) === 'coleta')
+    || candidatas.find(c => /numero|id|codigo|cod|ordem|num/.test(normNome(c)))
+    || candidatas[0] || null;
+
+  infoItens = { colunas, colTransp, colColeta };
+  infoItensEm = Date.now();
+  return infoItens;
+}
+
+app.get('/api/expedicao', async (req, res) => {
+  const hoje = new Date();
+  const ano = hoje.getFullYear();
+  const mes = String(hoje.getMonth() + 1).padStart(2, '0');
+  const ultimoDia = new Date(ano, hoje.getMonth() + 1, 0).getDate();
+  const valida = d => /^\d{4}-\d{2}-\d{2}$/.test(String(d || ''));
+  const dIni = valida(req.query.data_inicio) ? req.query.data_inicio : `${ano}-${mes}-01`;
+  const dFim = valida(req.query.data_fim) ? req.query.data_fim : `${ano}-${mes}-${String(ultimoDia).padStart(2, '0')}`;
+  const chave = `expedicao:${dIni}:${dFim}`;
+
+  try {
+    const info = await detectarColunasItens();
+    const transp = info.colTransp
+      ? `COALESCE(NULLIF(TRIM(${aspas(info.colTransp)}::text), ''), 'SEM TRANSPORTADORA')`
+      : `'SEM TRANSPORTADORA'`;
+    const coleta = info.colColeta ? `NULLIF(TRIM(${aspas(info.colColeta)}::text), '')` : `NULL`;
+    const semCancelado = `COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'`;
+    const agCarreg = `COALESCE("status_operacional", '') ILIKE '%aguardando exped%'`;
+    const ini = dIni + ' 00:00:00';
+    const fim = dFim + ' 23:59:59';
+
+    // KPIs de Ag. Carregamento (situação atual, sem filtro de data)
+    const k = await pool.query(`
+      SELECT
+        COUNT(DISTINCT NULLIF(${transp}, 'SEM TRANSPORTADORA')) AS transportadoras,
+        COALESCE(SUM("quantidade"), 0) AS pecas,
+        COUNT(DISTINCT "nota_fiscal") AS nfs,
+        COUNT(DISTINCT ${coleta}) AS coletas
+      FROM "itens"
+      WHERE ${agCarreg} AND ${semCancelado}`);
+
+    // Transportadoras por dia (Ag. Carregamento)
+    const td = await pool.query(`
+      SELECT DATE(COALESCE(NULLIF("conferido_em"::text, ''), "importado_em"::text)::timestamp) AS data,
+             ${transp} AS transportadora,
+             COALESCE(SUM("quantidade"), 0) AS pecas
+      FROM "itens"
+      WHERE ${agCarreg} AND ${semCancelado}
+      GROUP BY 1, 2
+      ORDER BY 1, 3 DESC`);
+
+    // Expedidas no período (processado_em)
+    const periodo = `"processado_em"::timestamp >= $1::timestamp AND "processado_em"::timestamp <= $2::timestamp AND ${semCancelado}`;
+
+    const em = await pool.query(`
+      SELECT COALESCE(SUM("quantidade"), 0) AS pecas FROM "itens" WHERE ${periodo}`, [ini, fim]);
+
+    const et = await pool.query(`
+      SELECT ${transp} AS transportadora, COALESCE(SUM("quantidade"), 0) AS pecas
+      FROM "itens" WHERE ${periodo}
+      GROUP BY 1 ORDER BY 2 DESC LIMIT 12`, [ini, fim]);
+
+    const nfs = await pool.query(`
+      SELECT DATE("processado_em"::timestamp) AS data,
+             COUNT(DISTINCT "nota_fiscal") FILTER (WHERE ${coleta} IS NOT NULL) AS expedido,
+             COUNT(DISTINCT "nota_fiscal") FILTER (WHERE ${coleta} IS NULL) AS sem_coleta
+      FROM "itens" WHERE ${periodo}
+      GROUP BY 1 ORDER BY 1 DESC`, [ini, fim]);
+
+    const col = await pool.query(`
+      SELECT DATE("processado_em"::timestamp) AS data,
+             COUNT(DISTINCT ${coleta}) AS expedido,
+             COUNT(DISTINCT "nota_fiscal") FILTER (WHERE ${coleta} IS NULL) AS sem_coleta
+      FROM "itens" WHERE ${periodo}
+      GROUP BY 1 ORDER BY 1 DESC`, [ini, fim]);
+
+    const k0 = k.rows[0] || {};
+    const resposta = {
+      transportadoras: Number(k0.transportadoras || 0),
+      pecas_ag_carregamento: Number(k0.pecas || 0),
+      nfs_ag_carregamento: Number(k0.nfs || 0),
+      coletas_ag_carregamento: Number(k0.coletas || 0),
+      transp_dia: td.rows.map(r => ({ data: r.data, transportadora: r.transportadora, pecas: Number(r.pecas) })),
+      expedidas_mes: Number(em.rows[0]?.pecas || 0),
+      expedidas_transportadora: et.rows.map(r => ({ transportadora: r.transportadora, pecas: Number(r.pecas) })),
+      nfs_dia: nfs.rows.map(r => ({ data: r.data, expedido: Number(r.expedido), sem_coleta: Number(r.sem_coleta) })),
+      coletas_dia: col.rows.map(r => ({ data: r.data, expedido: Number(r.expedido), sem_coleta: Number(r.sem_coleta) })),
+      diagnostico: { col_transportadora: info.colTransp || null, col_coleta: info.colColeta || null, colunas_itens: info.colunas },
+      ultima_atualizacao: await ultimaAtualizacao()
+    };
+
+    await responderComCache(res, chave, resposta,
+      d => d.pecas_ag_carregamento === 0 && d.expedidas_mes === 0 && d.nfs_ag_carregamento === 0);
+  } catch (err) {
+    await erroComCache(res, chave, err, 'Erro Expedição');
   }
 });
 
