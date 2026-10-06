@@ -59,7 +59,7 @@
     .kpi-card-outbound .title { font-size: 12px; font-weight: bold; color: #e0e0e0; }
     .kpi-card-outbound .value-main { font-size: 15px; font-weight: bold; color: #45a29e; }
     .kpi-card-outbound .sub { font-size: 10px; color: #aaa; }
-    .outbound-body-grid { display: grid; grid-template-columns: 1fr 300px; grid-template-rows: minmax(0, 1fr); gap: 8px; height: calc(100vh - 250px); min-height: 560px; }
+    .outbound-body-grid { display: grid; grid-template-columns: 1fr 300px; grid-template-rows: minmax(0, 1fr); gap: 8px; height: calc(100vh - 266px); min-height: 560px; }
     .center-charts { display: flex; flex-direction: column; gap: 8px; height: 100%; min-height: 0; }
     .chart-panel { background: #181818; border: 1px solid #2a2a2a; border-radius: 6px; padding: 8px; flex: 1 1 0; min-height: 0; position: relative; }
     .chart-panel-tag { position: absolute; top: 8px; left: 8px; background: #eaeaea; color: #000; font-size: 10px; font-weight: bold; padding: 2px 8px; border-radius: 10px; z-index: 2; }
@@ -82,9 +82,17 @@
     .header.header-logos { padding: 0 18px 0 0; overflow: hidden; }
     .header.header-logos .logos-box { align-self: stretch; gap: 0; }
     .header.header-logos .logo-box-img { border-radius: 0; padding: 0 24px; align-self: stretch; }
-    .header.header-logos .logo-box-img img { height: 58px; }
+    .header.header-logos .logo-box-img img { height: 54px; }
     .header.header-logos .header-title { margin-left: 24px; }
     .header.header-logos > div:last-child { padding: 8px 0; }
+
+    /* LOGOS: mesmo padrão nas abas de Outbound, Entrada e Expedição (preenchem a faixa preta) */
+    .outbound-header { padding: 0 14px 0 0; overflow: hidden; min-height: 76px; }
+    .outbound-header .logos-box { align-self: stretch; gap: 0; }
+    .outbound-header .logo-box-img { border-radius: 0; padding: 0 22px; align-self: stretch; }
+    .outbound-header .logo-box-img img { height: 54px; }
+    .outbound-header .header-kpis-group { margin-left: 16px; }
+    .outbound-header .update-time { margin-left: 16px !important; }
 
     /* OUTBOUND - EXPEDIÇÃO */
     .top-kpis-grid.quatro { grid-template-columns: repeat(4, 1fr); }
@@ -151,9 +159,13 @@
 
   <!-- ABA 1: ESTOQUE -->
   <div id="tab-estoque" class="tab-content">
-    <div class="header header-logos">
-      <div class="logos-box"><div class="logo-box-img luft"><img class="logo-luft" alt="Luft Logistics"></div><div class="logo-box-img ftd"><img class="logo-ftd" alt="FTD Educação"></div><span class="header-title" style="margin-left:10px">ESTOQUE - FTD FILIAL</span></div>
-      <div>
+    <div class="outbound-header">
+      <div class="logos-box">
+        <div class="logo-box-img luft"><img class="logo-luft" alt="Luft Logistics"></div>
+        <div class="logo-box-img ftd"><img class="logo-ftd" alt="FTD Educação"></div>
+      </div>
+      <div class="main-title-outbound">ESTOQUE - FTD FILIAL</div>
+      <div style="padding:8px 0">
         <div class="kpi-top-container">
           <div class="kpi-top"><span>Total Estoque</span><strong id="top-estoque">-</strong></div>
           <div class="kpi-top"><span>Total SKUs</span><strong id="top-skus">-</strong></div>
@@ -265,9 +277,14 @@
 
   <!-- ABA 3: RESUMO DE NF -->
   <div id="tab-notas" class="tab-content">
-    <div class="header">
-      <span class="header-title">RESUMO DE NF</span>
-      <div class="update-time">Última Atualização: <span id="nf-atualizacao">-</span></div>
+    <div class="outbound-header">
+      <div class="logos-box">
+        <div class="logo-box-img luft"><img class="logo-luft" alt="Luft Logistics"></div>
+        <div class="logo-box-img ftd"><img class="logo-ftd" alt="FTD Educação"></div>
+        <div class="update-time" style="text-align:left;margin:0 0 0 6px">Última Atualização:<br><span id="nf-atualizacao">-</span></div>
+      </div>
+      <div class="main-title-outbound">RESUMO DE NF</div>
+      <div style="min-width:220px"></div>
     </div>
 
     <div class="nf-kpis">

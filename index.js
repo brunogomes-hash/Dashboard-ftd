@@ -931,13 +931,20 @@ async function detectarColunasItens() {
 
   const colTransp = achar(n => n === 'transportadora') || achar(n => n.includes('transportadora')) || achar(n => n.includes('transportador'));
 
-  const candidatas = colunas.filter(c => {
-    const n = normNome(c);
-    return n.includes('coleta') && !n.endsWith('_em') && !n.includes('status') && !n.includes('data');
-  });
-  const colColeta = candidatas.find(c => normNome(c) === 'coleta')
-    || candidatas.find(c => /numero|id|codigo|cod|ordem|num/.test(normNome(c)))
-    || candidatas[0] || null;
+  // Identificador da coleta: prefere "carga" (e variações); senão qualquer coluna com "coleta" no nome
+  const preferidas = ['coleta', 'numero_coleta', 'id_coleta', 'carga', 'pre_carga', 'titulo_romaneio'];
+  let colColeta = null;
+  for (const p of preferidas) {
+    const c = colunas.find(x => normNome(x) === p);
+    if (c) { colColeta = c; break; }
+  }
+  if (!colColeta) {
+    const candidatas = colunas.filter(c => {
+      const n = normNome(c);
+      return n.includes('coleta') && !n.endsWith('_em') && !n.includes('status') && !n.includes('data') && !n.includes('usuario');
+    });
+    colColeta = candidatas[0] || null;
+  }
 
   infoItens = { colunas, colTransp, colColeta };
   infoItensEm = Date.now();
@@ -959,7 +966,7 @@ app.get('/api/expedicao', async (req, res) => {
     const transp = info.colTransp
       ? `COALESCE(NULLIF(TRIM(${aspas(info.colTransp)}::text), ''), 'SEM TRANSPORTADORA')`
       : `'SEM TRANSPORTADORA'`;
-    const coleta = info.colColeta ? `NULLIF(TRIM(${aspas(info.colColeta)}::text), '')` : `NULL`;
+    const coleta = info.colColeta ? `NULLIF(TRIM(${aspas(info.colColeta)}::text), '')` : `NULL::text`;
     const semCancelado = `COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'`;
     const agCarreg = `COALESCE("status_operacional", '') ILIKE '%aguardando exped%'`;
     const ini = dIni + ' 00:00:00';
@@ -996,19 +1003,30 @@ app.get('/api/expedicao', async (req, res) => {
       FROM "itens" WHERE ${periodo}
       GROUP BY 1 ORDER BY 2 DESC LIMIT 12`, [ini, fim]);
 
-    const nfs = await pool.query(`
-      SELECT DATE("processado_em"::timestamp) AS data,
-             COUNT(DISTINCT "nota_fiscal") FILTER (WHERE ${coleta} IS NOT NULL) AS expedido,
-             COUNT(DISTINCT "nota_fiscal") FILTER (WHERE ${coleta} IS NULL) AS sem_coleta
-      FROM "itens" WHERE ${periodo}
-      GROUP BY 1 ORDER BY 1 DESC`, [ini, fim]);
+    // Por dia: "Expedido" = itens com processado_em naquele dia;
+    // "Sem coleta" = itens importados naquele dia que ainda estão com processado_em vazio.
+    // As colunas de data são tratadas como texto: vazio ('') vira NULL antes de converter para timestamp.
+    const procTs = `NULLIF(TRIM("processado_em"::text), '')::timestamp`;
+    const impTs  = `NULLIF(TRIM("importado_em"::text), '')::timestamp`;
+    const porDia = idExpr => `
+      SELECT TO_CHAR(data, 'YYYY-MM-DD') AS data,
+             COUNT(DISTINCT id) FILTER (WHERE tipo = 'exp') AS expedido,
+             COUNT(DISTINCT id) FILTER (WHERE tipo = 'sem') AS sem_coleta
+      FROM (
+        SELECT DATE(${procTs}) AS data, ${idExpr} AS id, 'exp' AS tipo
+        FROM "itens"
+        WHERE ${procTs} >= $1::timestamp AND ${procTs} <= $2::timestamp AND ${semCancelado}
+        UNION ALL
+        SELECT DATE(${impTs}) AS data, ${idExpr} AS id, 'sem' AS tipo
+        FROM "itens"
+        WHERE ${impTs} >= $1::timestamp AND ${impTs} <= $2::timestamp
+          AND ${procTs} IS NULL AND ${semCancelado}
+      ) t
+      GROUP BY data
+      ORDER BY data DESC`;
 
-    const col = await pool.query(`
-      SELECT DATE("processado_em"::timestamp) AS data,
-             COUNT(DISTINCT ${coleta}) AS expedido,
-             COUNT(DISTINCT "nota_fiscal") FILTER (WHERE ${coleta} IS NULL) AS sem_coleta
-      FROM "itens" WHERE ${periodo}
-      GROUP BY 1 ORDER BY 1 DESC`, [ini, fim]);
+    const nfs = await pool.query(porDia(`"nota_fiscal"::text`), [ini, fim]);
+    const col = await pool.query(porDia(coleta), [ini, fim]);
 
     const k0 = k.rows[0] || {};
     const resposta = {
