@@ -315,6 +315,32 @@ app.get('/api/outbound', async (req, res) => {
       ORDER BY DATE("processado_em"::timestamp) ASC
     `, [dtInicio, dtFim, canalRe]);
 
+    // 6b. Gráfico: Peças por Data e Status (Expedido / Ag. Expedição / Em Fluxo), via importado_em, sem Cancelado
+    const graficoStatus = await pool.query(`
+      SELECT
+        t.data,
+        COALESCE(SUM(CASE WHEN t.grupo = 'exp'   THEN t.q END), 0) AS expedido,
+        COALESCE(SUM(CASE WHEN t.grupo = 'ag'    THEN t.q END), 0) AS ag_exp,
+        COALESCE(SUM(CASE WHEN t.grupo = 'fluxo' THEN t.q END), 0) AS em_fluxo
+      FROM (
+        SELECT
+          DATE("importado_em"::timestamp) AS data,
+          "quantidade" AS q,
+          CASE
+            WHEN COALESCE("status_operacional", '') ILIKE '%aguardando exped%' THEN 'ag'
+            WHEN COALESCE("status_operacional", '') ILIKE '%expedido%' THEN 'exp'
+            ELSE 'fluxo'
+          END AS grupo
+        FROM "itens"
+        WHERE "importado_em"::timestamp >= $1::timestamp
+          AND "importado_em"::timestamp <= $2::timestamp
+          AND COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
+          AND ($3::text = '' OR TRIM("canal"::text) ~* $3::text)
+      ) t
+      GROUP BY t.data
+      ORDER BY t.data DESC
+    `, [dtInicio, dtFim, canalRe]);
+
     // 7. Forecast e % x Forecast (mês de referência = mês da data inicial do filtro, formato AAAAMM)
     const mesRef = dtInicio.slice(0, 4) + dtInicio.slice(5, 7);
     let forecastPecas = 0;
@@ -391,6 +417,7 @@ app.get('/api/outbound', async (req, res) => {
       pecas_integradas_grafico: graficoIntegradas.rows || [],
       pecas_faturadas_grafico: graficoFaturados.rows || [],
       pecas_expedidas_grafico: graficoExpedidas.rows || [],
+      pecas_status_grafico: graficoStatus.rows || [],
       sla_pct: '100,00%',
       integrado_vs_fcst: integVsFcst,
       produzido_vs_fcst: prodVsFcst,

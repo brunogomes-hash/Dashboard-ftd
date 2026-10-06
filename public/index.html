@@ -67,6 +67,15 @@
     .empty-chart-icon { display: flex; align-items: center; justify-content: center; height: 100%; color: #444; font-size: 32px; }
     .chart-container-outbound { position: relative; height: 100%; width: 100%; padding-top: 22px; }
 
+    /* APRESENTAÇÃO */
+    .tabs-nav { flex-wrap: wrap; align-items: center; }
+    .apresentacao { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 11px; color: #888; transition: opacity .3s; }
+    .apresentacao select, .ctrl-btn { background: #1a1a1a; color: #ddd; border: 1px solid #333; border-radius: 6px; padding: 7px 10px; font-size: 12px; cursor: pointer; outline: none; }
+    .ctrl-btn:hover, .apresentacao select:hover { border-color: #45a29e; }
+    .ctrl-btn.ativo { background: #45a29e; color: #000; border-color: #45a29e; font-weight: bold; }
+    body.tela-cheia .apresentacao { opacity: .2; }
+    body.tela-cheia .apresentacao:hover { opacity: 1; }
+
     /* NOTAS EM FLUXO */
     .nf-kpis { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
     .nf-kpi { background: #181818; border: 1px solid #2a2a2a; border-radius: 6px; padding: 10px 16px; min-width: 150px; }
@@ -85,13 +94,26 @@
 <body>
 
   <div class="tabs-nav">
-    <button class="tab-btn active" data-tab="estoque" onclick="switchTab('estoque')">Estoque</button>
-    <button class="tab-btn" data-tab="outbound" onclick="switchTab('outbound')">Outbound - Geral</button>
-    <button class="tab-btn" data-tab="b2b" onclick="switchTab('b2b')">B2B</button>
-    <button class="tab-btn" data-tab="b2c" onclick="switchTab('b2c')">B2C</button>
-    <button class="tab-btn" data-tab="transferencia" onclick="switchTab('transferencia')">Transferência</button>
-    <button class="tab-btn" data-tab="prefeitura" onclick="switchTab('prefeitura')">Prefeitura</button>
-    <button class="tab-btn" data-tab="notas" onclick="switchTab('notas')">Resumo de NF</button>
+    <button class="tab-btn active" data-tab="estoque" onclick="switchTab('estoque', true)">Estoque</button>
+    <button class="tab-btn" data-tab="outbound" onclick="switchTab('outbound', true)">Outbound - Geral</button>
+    <button class="tab-btn" data-tab="b2b" onclick="switchTab('b2b', true)">B2B</button>
+    <button class="tab-btn" data-tab="b2c" onclick="switchTab('b2c', true)">B2C</button>
+    <button class="tab-btn" data-tab="transferencia" onclick="switchTab('transferencia', true)">Transferência</button>
+    <button class="tab-btn" data-tab="prefeitura" onclick="switchTab('prefeitura', true)">Prefeitura</button>
+    <button class="tab-btn" data-tab="notas" onclick="switchTab('notas', true)">Resumo de NF</button>
+
+    <div class="apresentacao" title="Modo apresentação">
+      <span>Trocar de aba:</span>
+      <select id="sel-intervalo" onchange="definirApresentacao(Number(this.value))">
+        <option value="0">Pausado</option>
+        <option value="5">A cada 5 s</option>
+        <option value="10">A cada 10 s</option>
+        <option value="15">A cada 15 s</option>
+        <option value="30">A cada 30 s</option>
+      </select>
+      <button id="btn-play" class="ctrl-btn" onclick="alternarApresentacao()">▶ Iniciar</button>
+      <button id="btn-tela" class="ctrl-btn" onclick="alternarTelaCheia()">⛶ Tela cheia (F11)</button>
+    </div>
   </div>
 
   <!-- ABA 1: ESTOQUE -->
@@ -262,7 +284,11 @@
 
     function outboundTemplate(p, titulo) {
       const kpi = (titulo, id, ped) =>
-        `<div class="kpi-card-outbound"><div class="title">${titulo}</div><div class="value-main" id="${p}${id}-val">0</div><div class="sub">Pedidos: <strong style="color:#fff" id="${p}${id}-ped">${ped}</strong></div></div>`;
+        `<div class="kpi-card-outbound"><div class="title">${titulo}</div><div class="value-main" id="${p}${id}-val">0</div>` +
+        (ped === null
+          ? `<div class="sub">&nbsp;</div>`
+          : `<div class="sub">Pedidos: <strong style="color:#fff" id="${p}${id}-ped">${ped}</strong></div>`) +
+        `</div>`;
       return `
         <div class="outbound-header">
           <div class="logos-box">
@@ -284,7 +310,7 @@
         </div>
 
         <div class="top-kpis-grid">
-          ${kpi('Forecast Peças', 'fcst', '-')}
+          ${kpi('Forecast Peças', 'fcst', null)}
           ${kpi('Peças Integradas', 'integ', '0')}
           ${kpi('Peças Fluxo', 'fluxo', '0')}
           ${kpi('Em Coleta', 'coleta', '0')}
@@ -301,7 +327,7 @@
           </div>
           <div class="right-chart">
             <span class="chart-panel-tag">Peças por Data e Status</span>
-            <div class="empty-chart-icon">📊</div>
+            <div class="chart-container-outbound"><canvas id="${p}chartStatus"></canvas></div>
           </div>
         </div>`;
     }
@@ -346,11 +372,82 @@
       }
     }
 
-    function switchTab(tabName) {
+    function switchTab(tabName, manual) {
       document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === tabName));
       document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
       document.getElementById('tab-' + tabName).classList.add('active');
       carregarAbaAtiva();
+      if (manual && intervaloAtual > 0) agendarApresentacao(); // clique do usuário reinicia a contagem
+    }
+
+    // ===== MODO APRESENTAÇÃO (troca automática de abas) e TELA CHEIA =====
+    let intervaloAtual = 0;       // segundos; 0 = pausado
+    let ultimoIntervalo = 10;     // usado ao clicar em "Iniciar"
+    let timerApresentacao = null;
+
+    function abaAtualKey() {
+      const ativa = document.querySelector('.tab-content.active');
+      return ativa ? ativa.id.replace('tab-', '') : 'estoque';
+    }
+
+    function proximaAba() {
+      const ordem = Array.from(document.querySelectorAll('.tab-btn')).map(b => b.dataset.tab);
+      const i = ordem.indexOf(abaAtualKey());
+      switchTab(ordem[(i + 1) % ordem.length]);
+    }
+
+    function agendarApresentacao() {
+      clearInterval(timerApresentacao);
+      timerApresentacao = intervaloAtual > 0 ? setInterval(proximaAba, intervaloAtual * 1000) : null;
+    }
+
+    function atualizarControles() {
+      const sel = document.getElementById('sel-intervalo');
+      const btn = document.getElementById('btn-play');
+      if (sel) sel.value = String(intervaloAtual);
+      if (btn) {
+        btn.textContent = intervaloAtual > 0 ? '⏸ Pausar' : '▶ Iniciar';
+        btn.classList.toggle('ativo', intervaloAtual > 0);
+      }
+    }
+
+    function definirApresentacao(seg) {
+      intervaloAtual = seg;
+      if (seg > 0) ultimoIntervalo = seg;
+      agendarApresentacao();
+      atualizarControles();
+      try { localStorage.setItem('dash_intervalo', String(seg)); } catch (e) {}
+    }
+
+    function alternarApresentacao() {
+      definirApresentacao(intervaloAtual > 0 ? 0 : ultimoIntervalo);
+    }
+
+    function alternarTelaCheia() {
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch(() => {});
+      } else {
+        document.documentElement.requestFullscreen().catch(() => {});
+      }
+    }
+
+    function atualizarModoTela() {
+      const cheia = !!document.fullscreenElement ||
+        (window.innerHeight >= screen.height - 2 && window.innerWidth >= screen.width - 2);
+      document.body.classList.toggle('tela-cheia', cheia);
+    }
+
+    function iniciarApresentacao() {
+      let salvo = 0;
+      try { salvo = Number(localStorage.getItem('dash_intervalo') || 0); } catch (e) {}
+      definirApresentacao([0, 5, 10, 15, 30].includes(salvo) ? salvo : 0);
+
+      document.addEventListener('keydown', e => {
+        if (e.key === 'F11') { e.preventDefault(); alternarTelaCheia(); }
+      });
+      document.addEventListener('fullscreenchange', atualizarModoTela);
+      window.addEventListener('resize', atualizarModoTela);
+      atualizarModoTela();
     }
 
     function renderizarGrafico(canvasId, labels, capacidade, ocupados, livres) {
@@ -477,6 +574,8 @@
         renderLineChart(p + 'chartFaturados', fat.map(i => labelData(i.data)),
           fat.map(i => Number(i.total_pecas || 0)), fat.map(i => Number(i.total_notas || 0)));
 
+        renderStatusChart(p + 'chartStatus', data.pecas_status_grafico);
+
         const sExp = serieComForecast(data.pecas_expedidas_grafico, data.forecast_diario);
         renderBarChart(p + 'chartExpedidas', sExp.labels, sExp.valores, '#3B82F6', 'Quantidade', sExp.meta);
       } catch (err) {
@@ -524,6 +623,67 @@
             x: { offset: true, ticks: { color: '#aaa', font: { size: 11 } }, grid: { display: false } },
             y: { beginAtZero: true, grace: '15%', ticks: { color: '#888', font: { size: 11 } }, grid: { color: '#222' } },
             y1: { beginAtZero: true, grace: '15%', position: 'right', ticks: { color: '#F59E0B', font: { size: 11 } }, grid: { display: false } }
+          }
+        }
+      });
+    }
+
+    // Barras horizontais 100%: Expedido / Ag. Expedição / Em Fluxo por data (mostra a quantidade em peças)
+    function renderStatusChart(canvasId, linhas) {
+      const canvas = document.getElementById(canvasId);
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (window[canvasId + 'Obj']) window[canvasId + 'Obj'].destroy();
+
+      const dados = (linhas || []).map(l => ({
+        label: labelData(l.data),
+        exp: Number(l.expedido || 0),
+        ag: Number(l.ag_exp || 0),
+        fl: Number(l.em_fluxo || 0)
+      }));
+      const total = i => (dados[i].exp + dados[i].ag + dados[i].fl) || 1;
+      const series = [
+        { nome: 'Expedido', cor: '#3B82F6', raw: dados.map(d => d.exp) },
+        { nome: 'Ag. Exp.', cor: '#2DD4BF', raw: dados.map(d => d.ag) },
+        { nome: 'Em Fluxo', cor: '#B57EDC', raw: dados.map(d => d.fl) }
+      ];
+
+      window[canvasId + 'Obj'] = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: dados.map(d => d.label),
+          datasets: series.map(s => ({
+            label: s.nome,
+            backgroundColor: s.cor,
+            data: s.raw.map((v, i) => (v / total(i)) * 100),
+            raw: s.raw,
+            barPercentage: 0.85,
+            categoryPercentage: 0.9
+          }))
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: false,
+          layout: { padding: { right: 6 } },
+          plugins: {
+            legend: { display: true, position: 'top', labels: { color: '#fff', boxWidth: 34, boxHeight: 12, font: { size: 12, weight: 'bold' } } },
+            tooltip: { callbacks: { label: c => `${c.dataset.label}: ${fmt(c.dataset.raw[c.dataIndex])} peças` } },
+            datalabels: {
+              color: '#fff',
+              anchor: 'end',
+              align: 'start',
+              clip: true,
+              font: { weight: 'bold', size: 10 },
+              formatter: (v, c) => {
+                const raw = c.dataset.raw[c.dataIndex];
+                return raw > 0 && v >= 3 ? fmt(raw) : '';
+              }
+            }
+          },
+          scales: {
+            x: { stacked: true, min: 0, max: 100, ticks: { color: '#aaa', font: { size: 10 }, callback: v => v + '%' }, grid: { color: '#222' } },
+            y: { stacked: true, ticks: { color: '#fff', font: { size: 10, weight: 'bold' } }, grid: { display: false } }
           }
         }
       });
@@ -652,6 +812,7 @@
     }
 
     montarAbasOutbound();
+    iniciarApresentacao();
     carregarEstoque();
     setInterval(carregarAbaAtiva, 30000);
   </script>
