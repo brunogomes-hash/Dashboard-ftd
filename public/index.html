@@ -1111,13 +1111,18 @@
           tension: 0,
           spanGaps: true,
           order: 1,
-          datalabels: {
-            display: ctx => ctx.dataIndex === ultimoMeta,
+                    datalabels: {
+            display: ctx => ctx.dataset.data[ctx.dataIndex] !== null,
+            backgroundColor: 'rgba(0,0,0,0.65)',
+            borderRadius: 3,
+            padding: { top: 1, bottom: 1, left: 3, right: 3 },
+            rotation: labels.length > 18 ? -90 : 0,
+            offset: 4,
             color: '#F59E0B',
             anchor: 'end',
             align: 'top',
             clip: false,
-            font: { weight: 'bold', size: 11 },
+            font: { weight: 'bold', size: 10 },
             formatter: v => fmt(v)
           }
         });
@@ -1129,7 +1134,7 @@
         options: {
           responsive: true,
           maintainAspectRatio: false,
-          layout: { padding: { top: 22, right: 10 } },
+          layout: { padding: { top: temMeta ? 50 : 22, right: 10 } },
           plugins: {
             legend: { display: temMeta, position: 'top', align: 'end', labels: { color: '#aaa', boxWidth: 16, boxHeight: 8, font: { size: 11 } } },
             datalabels: { color: '#fff', anchor: 'end', align: 'top', clip: false, font: { weight: 'bold', size: 11 }, formatter: val => val > 0 ? fmt(val) : '' }
