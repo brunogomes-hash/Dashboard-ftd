@@ -757,11 +757,20 @@
     // Busca o JSON; se falhar ou vier com erro, devolve o último resultado bom da mesma URL
     async function buscarJSON(url) {
       try {
-        const res = await fetch(url);
+        const res = await fetch(url, { cache: 'no-store' });
         const data = await res.json();
         if (data && !data.error) { gravarMemoria('url:' + url, data); return data; }
+        console.warn('Resposta com erro, usando memória do navegador:', url, data);
       } catch (e) { console.error('Falha ao buscar', url, e); }
-      return lerMemoria('url:' + url);
+      const antigo = lerMemoria('url:' + url);
+      return antigo ? { ...antigo, dados_anteriores: true, cache_motivo: 'falha_no_navegador' } : antigo;
+    }
+    // Texto que avisa quando a aba está mostrando dado antigo (e por quê)
+    function avisoDadosAnteriores(data) {
+      if (!data || !data.dados_anteriores) return '';
+      const motivo = data.cache_motivo || '';
+      const quando = data.cache_hora ? ' desde ' + data.cache_hora : '';
+      return ' ⚠ dados anteriores (' + motivo + quando + ')';
     }
     // Para blocos que às vezes chegam vazios (ex.: gráficos do Estoque)
     function listaComMemoria(chave, lista) {
@@ -838,7 +847,7 @@
         const data = await buscarJSON(`/api/outbound?data_inicio=${dataInicio}&data_fim=${dataFim}&canal=${cfg.canal}`);
         if (!data || data.error) return;
 
-        $('atualizacao').innerText = data.ultima_atualizacao || '-';
+        $('atualizacao').innerText = (data.ultima_atualizacao || '-') + avisoDadosAnteriores(data);
         if (data.sla_pct) $('out-sla').innerText = data.sla_pct;
         if (data.integrado_vs_fcst) $('integ-vs-fcst').innerText = data.integrado_vs_fcst;
         if (data.produzido_vs_fcst) $('prod-vs-fcst').innerText = data.produzido_vs_fcst;
