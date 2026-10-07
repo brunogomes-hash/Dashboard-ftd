@@ -1136,42 +1136,25 @@
       if (temMeta) metaValores.forEach((v, i) => { if (v !== null) ultimoMeta = i; });
 
       const datasets = [{ label: legendLabel, data: dataValores, backgroundColor: cor, borderRadius: 4, order: 2 }];
-      if (temMeta) {
-        datasets.push({
-          type: 'line',
-          label: 'Forecast/dia',
-          data: metaValores,
-          borderColor: '#F59E0B',
-          backgroundColor: '#F59E0B',
-          borderWidth: 2,
-          borderDash: [6, 4],
-          pointRadius: 2,
-          tension: 0,
-          spanGaps: true,
-          order: 1,
-          datalabels: {
-            // o forecast/dia é igual em todos os dias do mês: mostra o número só no 1º ponto de cada trecho
-            display: ctx => {
-              const dados = ctx.dataset.data, i = ctx.dataIndex;
-              if (dados[i] === null) return false;
-              let j = i - 1;
-              while (j >= 0 && dados[j] === null) j--;
-              return j < 0 || dados[j] !== dados[i];
-            },
-            backgroundColor: 'rgba(0,0,0,0.75)',
-            borderRadius: 3,
-            padding: { top: 1, bottom: 1, left: 4, right: 4 },
-            rotation: 0,
-            offset: 6,
-            color: '#F59E0B',
-            anchor: 'end',
-            align: 'top',
-            clip: false,
-            font: { weight: 'bold', size: 13 },
-            formatter: v => fmt(v)
-          }
-        });
-      }
+      // CÓDIGO NOVO:
+if (temMeta) {
+  datasets.push({
+    type: 'line',
+    label: 'Forecast/dia',
+    data: metaValores,
+    borderColor: '#F59E0B',
+    backgroundColor: '#F59E0B',
+    borderWidth: 2,
+    borderDash: [6, 4],
+    pointRadius: 2,
+    tension: 0,
+    spanGaps: true,
+    order: 1,
+    datalabels: {
+      display: false // Oculta todos os números/rótulos da linha de Forecast
+    }
+  });
+}
 
       window[canvasId + 'Obj'] = new Chart(ctx, {
         type: 'bar',
