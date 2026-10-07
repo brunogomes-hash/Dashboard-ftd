@@ -7,10 +7,24 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ===== CONEXÃO COM O DATABASE (URL do Supabase ou Neon) =====
+// O pg novo trata sslmode=require (que vem na URL do Neon/Supabase) como verify-full e
+// IGNORA o ssl: { rejectUnauthorized: false } abaixo -> erro SELF_SIGNED_CERT_IN_CHAIN.
+// Por isso removemos os parâmetros de SSL da URL e deixamos só a opção ssl do código.
+function urlSemSsl(url) {
+  try {
+    const u = new URL(url);
+    ['sslmode', 'sslrootcert', 'sslcert', 'sslkey', 'uselibpqcompat'].forEach(p => u.searchParams.delete(p));
+    return u.toString();
+  } catch (e) {
+    return url;
+  }
+}
+
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  connectionString: urlSemSsl(process.env.DATABASE_URL),
   ssl: { rejectUnauthorized: false }
 });
+pool.on('error', e => console.error('Erro no pool do banco:', e.message));
 
 // ===== NUNCA DEixar O NAVEGADOR/PROXY GUARDAR RESPOSTA DA API =====
 app.use('/api', (req, res, next) => {
