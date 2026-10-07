@@ -1185,7 +1185,7 @@
         document.getElementById('nf-total-skus').innerText = fmt(data.total_skus);
         document.getElementById('nf-total-pecas').innerText = fmt(data.total_pecas);
         document.getElementById('nf-tratativa').innerText = fmt(data.em_tratativa_notas) + ' / ' + fmt(data.em_tratativa_pecas);
-        document.getElementById('nf-atualizacao').innerText = data.ultima_atualizacao || '-';
+        document.getElementById('nf-atualizacao').innerText = (data.ultima_atualizacao || '-') + (data.dados_anteriores ? ' (dados anteriores)' : '');
 
         document.getElementById('nf-status-body').innerHTML = (data.por_status || []).map(s =>
           `<tr><td>${esc(s.status)}</td><td>${fmt(s.notas)}</td><td>${fmt(s.skus)}</td><td>${fmt(s.pecas)}</td></tr>`

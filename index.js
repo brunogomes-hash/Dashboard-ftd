@@ -559,7 +559,7 @@ app.get('/api/outbound', async (req, res) => {
           CASE WHEN "status_da_nota_fiscal" ILIKE '%RETEN%'
                  OR "status_operacional" ILIKE '%RETEN%'
                  OR "status_operacional" ILIKE '%TRATATIVA%'
-                 OR "status_operacional" ILIKE '%corte l_gico%'
+                 OR "status_operacional" ILIKE '%corte%'
                THEN "quantidade" ELSE 0 END
         ), 0) AS total_tratativa,
 
@@ -567,7 +567,7 @@ app.get('/api/outbound', async (req, res) => {
           CASE WHEN "status_da_nota_fiscal" ILIKE '%RETEN%'
                  OR "status_operacional" ILIKE '%RETEN%'
                  OR "status_operacional" ILIKE '%TRATATIVA%'
-                 OR "status_operacional" ILIKE '%corte l_gico%'
+                 OR "status_operacional" ILIKE '%corte%'
                THEN "pedido_de_venda" END
         ) AS pedidos_tratativa
 
@@ -765,21 +765,29 @@ app.get('/api/notas-fluxo', async (req, res) => {
     // Tabela "itens" em recarga => mostra o último resultado bom
     if (await servirCacheSeRecarga(res, 'resumo-nf', ['itens'])) return;
 
+    // Colunas/expressões do Resumo de NF
+    const infoNF = await detectarColunasItens();
+    const colDestNF = infoNF.colunas.find(c => normNome(c) === 'destinatario');
+    const exprDest = colDestNF ? aspas(colDestNF) : `NULL::text`;
+    // Nota sem número de NF (ex.: corte lógico antes de faturar) aparece como "SEM NF - pedido"
+    const chaveNF = `COALESCE(NULLIF(TRIM("nota_fiscal"::text), ''), 'SEM NF - ' || COALESCE("pedido_de_venda"::text, ''))`;
+    const statusTrat = `(COALESCE("status_operacional", '') ILIKE '%corte%' OR COALESCE("status_operacional", '') ILIKE '%reten%' OR COALESCE("status_operacional", '') ILIKE '%tratativa%')`;
+
     const base = `
       WITH base AS (
         SELECT
-          "nota_fiscal"::text AS nota_fiscal,
+          ${chaveNF} AS nota_fiscal,
           COALESCE(NULLIF(TRIM("status_operacional"), ''), 'SEM STATUS') AS status,
           MAX("canal") AS canal,
-          MAX("destinatario") AS destinatario,
+          MAX(${exprDest}) AS destinatario,
           MAX(CASE WHEN TRIM("qtde_de_produto"::text) ~ '^[0-9]+([.,][0-9]+)?$'
                    THEN REPLACE(TRIM("qtde_de_produto"::text), ',', '.')::numeric END) AS skus,
           COALESCE(SUM("quantidade"), 0) AS pecas,
           COUNT(DISTINCT "pedido_de_venda") AS pedidos
         FROM "itens"
-        WHERE "nota_fiscal" IS NOT NULL
-          AND TRIM("nota_fiscal"::text) <> ''
-        GROUP BY "nota_fiscal"::text,
+        WHERE ("nota_fiscal" IS NOT NULL AND TRIM("nota_fiscal"::text) <> '')
+           OR ${statusTrat}
+        GROUP BY ${chaveNF},
                  COALESCE(NULLIF(TRIM("status_operacional"), ''), 'SEM STATUS')
       ),
       nf AS (
@@ -798,7 +806,9 @@ app.get('/api/notas-fluxo', async (req, res) => {
       ${base}
       SELECT nota_fiscal, status, canal, destinatario, skus, pedidos, pecas
       FROM base
-      ORDER BY nota_fiscal DESC
+      ORDER BY (CASE WHEN status ILIKE '%corte%' OR status ILIKE '%reten%' OR status ILIKE '%tratativa%' THEN 0 ELSE 1 END),
+               (CASE WHEN nota_fiscal ~ '^[0-9]+$' THEN nota_fiscal::numeric END) DESC NULLS LAST,
+               nota_fiscal DESC
       LIMIT 5000
     `);
 
@@ -850,10 +860,19 @@ app.get('/api/notas-fluxo', async (req, res) => {
       ${base}
       SELECT COUNT(DISTINCT nota_fiscal) AS notas, COALESCE(SUM(pecas), 0) AS pecas
       FROM base
-      WHERE status ILIKE '%reten%' OR status ILIKE '%tratativa%' OR status ILIKE '%corte l_gico%'
+      WHERE status ILIKE '%reten%' OR status ILIKE '%tratativa%' OR status ILIKE '%corte%'
     `);
     resposta.em_tratativa_notas = Number(trat.rows[0]?.notas || 0);
     resposta.em_tratativa_pecas = Number(trat.rows[0]?.pecas || 0);
+
+    try {
+      const dg = await pool.query(`
+        SELECT COALESCE(NULLIF(TRIM("status_operacional"), ''), '(vazio)') AS status,
+               COUNT(*) AS linhas,
+               COUNT(*) FILTER (WHERE "nota_fiscal" IS NULL OR TRIM("nota_fiscal"::text) = '') AS sem_nf
+        FROM "itens" WHERE COALESCE("status_operacional", '') ILIKE '%corte%' GROUP BY 1`);
+      resposta.diagnostico_corte = dg.rows.map(r => ({ status: r.status, linhas: Number(r.linhas), sem_nf: Number(r.sem_nf) }));
+    } catch (e) { resposta.diagnostico_corte = { erro: e.message }; }
 
     await responderComCache(res, 'resumo-nf', resposta, d => d.total_notas === 0);
   } catch (err) {
