@@ -1008,7 +1008,7 @@ app.get('/api/inbound', async (req, res) => {
       });
 
       const pc = await pool.query(`
-        SELECT "produzido_x_forecast_" AS armz, "_sla_24h" AS sla24, "_sla" AS sla
+        SELECT "produzido_x_forecast_" AS armz, "_sla" AS sla24, "_sla" AS sla
         FROM "entrada_consolidada_porcentagem"
         WHERE TRIM("modalidade") ~* $2 AND LEFT(TRIM("data"), 6) = $1
         LIMIT 1`, [mesRef, cfg.modal]);
