@@ -291,6 +291,7 @@
       <div class="nf-kpi"><span>Total de Notas</span><strong id="nf-total-notas">0</strong></div>
       <div class="nf-kpi"><span>Total de SKUs (1 por NF)</span><strong id="nf-total-skus">0</strong></div>
       <div class="nf-kpi"><span>Total de Peças</span><strong id="nf-total-pecas">0</strong></div>
+      <div class="nf-kpi"><span>Em Tratativa (Notas / Peças)</span><strong id="nf-tratativa">0 / 0</strong></div>
     </div>
 
     <div class="nf-grid">
@@ -334,6 +335,11 @@
     }
 
     Chart.register(ChartDataLabels);
+    Chart.defaults.interaction.mode = 'index';
+    Chart.defaults.interaction.intersect = false;
+    Chart.defaults.plugins.tooltip.padding = 10;
+    Chart.defaults.plugins.tooltip.titleFont = { size: 14, weight: 'bold' };
+    Chart.defaults.plugins.tooltip.bodyFont = { size: 13 };
 
     function fmt(num) { return Number(num || 0).toLocaleString('pt-BR'); }
     function fmtN(num) { return num === null || num === undefined ? '-' : fmt(num); }
@@ -681,11 +687,11 @@
           layout: { padding: { top: 22 } },
           plugins: {
             legend: { display: false },
-            datalabels: { clip: false, font: { weight: 'bold', size: 11 }, formatter: rotulo }
+            datalabels: { clip: false, font: { weight: 'bold', size: 14 }, formatter: rotulo }
           },
           scales: {
-            x: { stacked: true, ticks: { color: '#FFFFFF', font: { weight: 'bold', size: 11 } }, grid: { display: false } },
-            y: { stacked: true, beginAtZero: true, grace: '10%', ticks: { color: '#888888', font: { size: 11 } }, grid: { color: '#222222' } }
+            x: { stacked: true, ticks: { color: '#FFFFFF', font: { weight: 'bold', size: 14 } }, grid: { display: false } },
+            y: { stacked: true, beginAtZero: true, grace: '10%', ticks: { color: '#888888', font: { size: 14 } }, grid: { color: '#222222' } }
           }
         }
       });
@@ -718,16 +724,17 @@
         },
         options: {
           indexAxis: 'y',
+          interaction: { mode: 'index', intersect: false, axis: 'y' },
           responsive: true,
           maintainAspectRatio: false,
           layout: { padding: { right: 8 } },
           plugins: {
             legend: { display: false },
-            datalabels: { color: '#fff', anchor: 'end', align: 'end', clip: false, font: { weight: 'bold', size: 11 }, formatter: v => v > 0 ? fmt(v) : '' }
+            datalabels: { color: '#fff', anchor: 'end', align: 'end', clip: false, font: { weight: 'bold', size: 14 }, formatter: v => v > 0 ? fmt(v) : '' }
           },
           scales: {
             x: { display: false, beginAtZero: true, grace: '18%' },
-            y: { ticks: { color: '#ddd', font: { size: 10, weight: 'bold' } }, grid: { display: false }, border: { color: '#888' } }
+            y: { ticks: { color: '#ddd', font: { size: 13, weight: 'bold' } }, grid: { display: false }, border: { color: '#888' } }
           }
         }
       });
@@ -898,14 +905,14 @@
         options: {
           responsive: true,
           maintainAspectRatio: false,
-          layout: { padding: { top: 22, right: 10 } },
+          layout: { padding: { top: (datas.length * transps.length) > 14 ? 56 : 22, right: 10 } },
           plugins: {
-            legend: { display: true, position: 'top', align: 'start', labels: { color: '#ddd', boxWidth: 22, boxHeight: 10, font: { size: 11 } } },
-            datalabels: { color: '#fff', anchor: 'end', align: 'top', clip: false, font: { weight: 'bold', size: 11 }, formatter: v => v > 0 ? fmt(v) : '' }
+            legend: { display: true, position: 'top', align: 'start', labels: { color: '#ddd', boxWidth: 22, boxHeight: 10, font: { size: 14 } } },
+            datalabels: { color: '#fff', anchor: 'end', align: 'top', clip: false, rotation: (datas.length * transps.length) > 14 ? -90 : 0, font: { weight: 'bold', size: 14 }, formatter: v => v > 0 ? fmt(v) : '' }
           },
           scales: {
-            x: { ticks: { color: '#ddd', font: { size: 11 } }, grid: { display: false } },
-            y: { beginAtZero: true, grace: '15%', ticks: { color: '#888', font: { size: 11 } }, grid: { color: '#222' } }
+            x: { ticks: { color: '#ddd', font: { size: 14 } }, grid: { display: false } },
+            y: { beginAtZero: true, grace: '15%', ticks: { color: '#888', font: { size: 14 } }, grid: { color: '#222' } }
           }
         }
       });
@@ -928,8 +935,8 @@
         renderBarChart(p + 'chartExpMes', ['Expedido'], [Number(data.expedidas_mes || 0)], '#5E6AE2', 'Expedido');
         const et = data.expedidas_transportadora || [];
         renderBarChart(p + 'chartExpTransp', et.map(t => t.transportadora), et.map(t => Number(t.pecas || 0)), '#5E6AE2', 'Peças');
-        renderStatusChart(p + 'chartNfsDia', data.nfs_dia, SERIES_STATUS_EXPEDICAO);
-        renderStatusChart(p + 'chartColetasDia', data.coletas_dia, SERIES_STATUS_EXPEDICAO);
+        renderStatusChart(p + 'chartNfsDia', (data.nfs_dia || []).slice(0, 31), SERIES_STATUS_EXPEDICAO);
+        renderStatusChart(p + 'chartColetasDia', (data.coletas_dia || []).slice(0, 31), SERIES_STATUS_EXPEDICAO);
       } catch (err) {
         console.error('Erro ao carregar expedição:', err);
       }
@@ -987,23 +994,24 @@
         options: {
           responsive: true,
           maintainAspectRatio: false,
-          layout: { padding: { top: 6, right: 10 } },
+          layout: { padding: { top: labels.length > 18 ? 56 : 6, right: 10 } },
           plugins: {
-            legend: { display: true, position: 'top', align: 'end', labels: { color: '#aaa', boxWidth: 16, boxHeight: 8, font: { size: 11 } } },
+            legend: { display: true, position: 'top', align: 'end', labels: { color: '#aaa', boxWidth: 16, boxHeight: 8, font: { size: 14 } } },
             datalabels: {
               color: '#fff',
               anchor: 'end',
               align: 'top',
               offset: 2,
+              rotation: labels.length > 18 ? -90 : 0,
               clip: false,
-              font: { weight: 'bold', size: 11 },
+              font: { weight: 'bold', size: 14 },
               formatter: val => val > 0 ? fmt(val) : ''
             }
           },
           scales: {
-            x: { offset: true, ticks: { color: '#aaa', font: { size: 11 } }, grid: { display: false } },
-            y: { beginAtZero: true, grace: '15%', ticks: { color: '#888', font: { size: 11 } }, grid: { color: '#222' } },
-            y1: { beginAtZero: true, grace: '15%', position: 'right', ticks: { color: '#F59E0B', font: { size: 11 } }, grid: { display: false } }
+            x: { offset: true, ticks: { color: '#aaa', font: { size: 14 } }, grid: { display: false } },
+            y: { beginAtZero: true, grace: '15%', ticks: { color: '#888', font: { size: 14 } }, grid: { color: '#222' } },
+            y1: { beginAtZero: true, grace: '15%', position: 'right', ticks: { color: '#F59E0B', font: { size: 14 } }, grid: { display: false } }
           }
         }
       });
@@ -1046,18 +1054,19 @@
         },
         options: {
           indexAxis: 'y',
+          interaction: { mode: 'index', intersect: false, axis: 'y' },
           responsive: true,
           maintainAspectRatio: false,
           layout: { padding: { right: 6 } },
           plugins: {
-            legend: { display: true, position: 'top', labels: { color: '#fff', boxWidth: 34, boxHeight: 12, font: { size: 12, weight: 'bold' } } },
-            tooltip: { callbacks: { label: c => `${c.dataset.label}: ${fmt(c.dataset.raw[c.dataIndex])} peças` } },
+            legend: { display: true, position: 'top', labels: { color: '#fff', boxWidth: 34, boxHeight: 12, font: { size: 14, weight: 'bold' } } },
+            tooltip: { callbacks: { label: c => `${c.dataset.label}: ${fmt(c.dataset.raw[c.dataIndex])}${cfg === SERIES_STATUS_EXPEDICAO ? '' : ' peças'}` } },
             datalabels: {
               color: '#fff',
               anchor: 'end',
               align: 'start',
               clip: true,
-              font: { weight: 'bold', size: 10 },
+              font: { weight: 'bold', size: 13 },
               formatter: (v, c) => {
                 const raw = c.dataset.raw[c.dataIndex];
                 return raw > 0 && v >= 3 ? fmt(raw) : '';
@@ -1065,8 +1074,8 @@
             }
           },
           scales: {
-            x: { stacked: true, min: 0, max: 100, ticks: { color: '#aaa', font: { size: 10 }, callback: v => v + '%' }, grid: { color: '#222' } },
-            y: { stacked: true, ticks: { color: '#fff', font: { size: 10, weight: 'bold' } }, grid: { display: false } }
+            x: { stacked: true, min: 0, max: 100, ticks: { color: '#aaa', font: { size: 13 }, callback: v => v + '%' }, grid: { color: '#222' } },
+            y: { stacked: true, ticks: { color: '#fff', font: { size: 13, weight: 'bold' } }, grid: { display: false } }
           }
         }
       });
@@ -1085,6 +1094,13 @@
         valores: datas.map(d => mapa[d] || 0),
         meta: datas.map(d => (d in meta ? meta[d] : null))
       };
+    }
+
+    function legendaSimples(chart) {
+      return Chart.defaults.plugins.legend.labels.generateLabels(chart).map(l => {
+        const linha = chart.data.datasets[l.datasetIndex].type === 'line';
+        return linha ? { ...l, pointStyle: 'line', lineDash: [], lineWidth: 3 } : { ...l, pointStyle: 'rect' };
+      });
     }
 
     function renderBarChart(canvasId, labels, dataValores, cor, legendLabel, metaValores) {
@@ -1122,7 +1138,7 @@
             anchor: 'end',
             align: 'top',
             clip: false,
-            font: { weight: 'bold', size: 10 },
+            font: { weight: 'bold', size: 13 },
             formatter: v => fmt(v)
           }
         });
@@ -1134,14 +1150,14 @@
         options: {
           responsive: true,
           maintainAspectRatio: false,
-          layout: { padding: { top: temMeta ? 50 : 22, right: 10 } },
+          layout: { padding: { top: (temMeta || labels.length > 18) ? 64 : 22, right: 10 } },
           plugins: {
-            legend: { display: temMeta, position: 'top', align: 'end', labels: { color: '#aaa', boxWidth: 16, boxHeight: 8, font: { size: 11 } } },
-            datalabels: { color: '#fff', anchor: 'end', align: 'top', clip: false, font: { weight: 'bold', size: 11 }, formatter: val => val > 0 ? fmt(val) : '' }
+            legend: { display: temMeta, position: 'top', align: 'end', labels: { color: '#aaa', usePointStyle: true, boxWidth: 22, boxHeight: 8, font: { size: 14 }, generateLabels: legendaSimples } },
+            datalabels: { color: '#fff', anchor: 'end', align: 'top', clip: false, font: { weight: 'bold', size: 14 }, rotation: labels.length > 18 ? -90 : 0, formatter: val => val > 0 ? fmt(val) : '' }
           },
           scales: {
-            x: { ticks: { color: '#aaa', font: { size: 11 } }, grid: { display: false } },
-            y: { beginAtZero: true, grace: '15%', ticks: { color: '#888', font: { size: 11 } }, grid: { color: '#222' } }
+            x: { ticks: { color: '#aaa', font: { size: 14 } }, grid: { display: false } },
+            y: { beginAtZero: true, grace: '15%', ticks: { color: '#888', font: { size: 14 } }, grid: { color: '#222' } }
           }
         }
       });
@@ -1168,6 +1184,7 @@
         document.getElementById('nf-total-notas').innerText = fmt(data.total_notas);
         document.getElementById('nf-total-skus').innerText = fmt(data.total_skus);
         document.getElementById('nf-total-pecas').innerText = fmt(data.total_pecas);
+        document.getElementById('nf-tratativa').innerText = fmt(data.em_tratativa_notas) + ' / ' + fmt(data.em_tratativa_pecas);
         document.getElementById('nf-atualizacao').innerText = data.ultima_atualizacao || '-';
 
         document.getElementById('nf-status-body').innerHTML = (data.por_status || []).map(s =>

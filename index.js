@@ -559,6 +559,7 @@ app.get('/api/outbound', async (req, res) => {
           CASE WHEN "status_da_nota_fiscal" ILIKE '%RETEN%'
                  OR "status_operacional" ILIKE '%RETEN%'
                  OR "status_operacional" ILIKE '%TRATATIVA%'
+                 OR "status_operacional" ILIKE '%corte l_gico%'
                THEN "quantidade" ELSE 0 END
         ), 0) AS total_tratativa,
 
@@ -566,6 +567,7 @@ app.get('/api/outbound', async (req, res) => {
           CASE WHEN "status_da_nota_fiscal" ILIKE '%RETEN%'
                  OR "status_operacional" ILIKE '%RETEN%'
                  OR "status_operacional" ILIKE '%TRATATIVA%'
+                 OR "status_operacional" ILIKE '%corte l_gico%'
                THEN "pedido_de_venda" END
         ) AS pedidos_tratativa
 
@@ -842,6 +844,16 @@ app.get('/api/notas-fluxo', async (req, res) => {
       notas: notas.rows,
       ultima_atualizacao: await ultimaAtualizacao()
     };
+
+        // Em Tratativa: retenção, tratativa e corte lógico (status_operacional)
+    const trat = await pool.query(`
+      ${base}
+      SELECT COUNT(DISTINCT nota_fiscal) AS notas, COALESCE(SUM(pecas), 0) AS pecas
+      FROM base
+      WHERE status ILIKE '%reten%' OR status ILIKE '%tratativa%' OR status ILIKE '%corte l_gico%'
+    `);
+    resposta.em_tratativa_notas = Number(trat.rows[0]?.notas || 0);
+    resposta.em_tratativa_pecas = Number(trat.rows[0]?.pecas || 0);
 
     await responderComCache(res, 'resumo-nf', resposta, d => d.total_notas === 0);
   } catch (err) {
