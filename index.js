@@ -493,20 +493,21 @@ function diasDoPeriodo(isoIni, isoFim) {
 // ===== CANAIS (aba por canal) =====
 // re = padrão para casar o valor da coluna "canal" / "modalidade"; col = coluna do forecast_outbound
 const MAPA_CANAL = {
-  b2b:           { re: '^b2b',        col: 'b2b_total' },
-  b2c:           { re: '^b2c',        col: 'b2c_total' },
-  transferencia: { re: '^transfer',   col: 'transferencias_total' },
-  prefeitura:    { re: '^prefeitura', col: 'prefeitura_total' }
+  b2b:           { re: 'b2b',          col: 'b2b_total' },
+  b2c:           { re: 'b2c',          col: 'b2c_total' },
+  transferencia: { re: 'transfer',     col: 'transferencias_total' },
+  prefeitura:    { re: 'prefeitura',   col: 'prefeitura_total' }
 };
 
 // ROUTE 2: OUTBOUND GERAL (filtro opcional ?canal=b2b|b2c|transferencia|prefeitura)
+// ROUTE 2: OUTBOUND GERAL (filtro opcional ?canal=b2b|b2c|transferencia|prefeitura)
 app.get('/api/outbound', async (req, res) => {
-  const canalKey = String(req.query.canal || '').toLowerCase();
+  const canalKey = String(req.query.canal || '').toLowerCase().trim();
   const cfgCanal = MAPA_CANAL[canalKey] || null;
   const canalRe = cfgCanal ? cfgCanal.re : '';
   const chaveOutbound = `outbound:${canalKey || 'geral'}:${req.query.data_inicio || 'mes'}:${req.query.data_fim || 'atual'}`;
+  
   try {
-    // Tabela "itens" em recarga => mostra o último resultado bom desta aba/período
     if (await servirCacheSeRecarga(res, chaveOutbound, ['itens'])) return;
 
     const { data_inicio, data_fim } = req.query;
@@ -523,6 +524,11 @@ app.get('/api/outbound', async (req, res) => {
       dtInicio = `${ano}-${mes}-01 00:00:00`;
       dtFim = `${ano}-${mes}-${String(ultimoDia).padStart(2, '0')} 23:59:59`;
     }
+
+    // Condição SQL flexível para canal
+    const filtroCanal = canalRe 
+      ? `AND (TRIM("canal"::text) ILIKE '%${canalRe}%' OR TRIM(COALESCE("modalidade"::text, '')) ILIKE '%${canalRe}%')` 
+      : '';
 
     const kpisImportados = await pool.query(`
       SELECT 
@@ -575,8 +581,8 @@ app.get('/api/outbound', async (req, res) => {
       WHERE "importado_em"::timestamp >= $1::timestamp 
         AND "importado_em"::timestamp <= $2::timestamp
         AND COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
-        AND ($3::text = '' OR TRIM("canal"::text) ~* $3::text)
-    `, [dtInicio, dtFim, canalRe]);
+        ${filtroCanal}
+    `, [dtInicio, dtFim]);
 
     const kpisProduzidos = await pool.query(`
       SELECT 
@@ -586,8 +592,8 @@ app.get('/api/outbound', async (req, res) => {
       WHERE "conferido_em"::timestamp >= $1::timestamp 
         AND "conferido_em"::timestamp <= $2::timestamp
         AND COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
-        AND ($3::text = '' OR TRIM("canal"::text) ~* $3::text)
-    `, [dtInicio, dtFim, canalRe]);
+        ${filtroCanal}
+    `, [dtInicio, dtFim]);
 
     const kpisExpedidos = await pool.query(`
       SELECT 
@@ -597,8 +603,8 @@ app.get('/api/outbound', async (req, res) => {
       WHERE "processado_em"::timestamp >= $1::timestamp 
         AND "processado_em"::timestamp <= $2::timestamp
         AND COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
-        AND ($3::text = '' OR TRIM("canal"::text) ~* $3::text)
-    `, [dtInicio, dtFim, canalRe]);
+        ${filtroCanal}
+    `, [dtInicio, dtFim]);
 
     const graficoIntegradas = await pool.query(`
       SELECT 
@@ -608,12 +614,11 @@ app.get('/api/outbound', async (req, res) => {
       WHERE "importado_em"::timestamp >= $1::timestamp 
         AND "importado_em"::timestamp <= $2::timestamp
         AND COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
-        AND ($3::text = '' OR TRIM("canal"::text) ~* $3::text)
+        ${filtroCanal}
       GROUP BY DATE("importado_em")
       ORDER BY DATE("importado_em") ASC
-    `, [dtInicio, dtFim, canalRe]);
+    `, [dtInicio, dtFim]);
 
-    // 5. Gráfico: Peças e Notas Faturadas por Data (via conferido_em)
     const graficoFaturados = await pool.query(`
       SELECT 
         DATE("conferido_em"::timestamp) AS data,
@@ -623,12 +628,11 @@ app.get('/api/outbound', async (req, res) => {
       WHERE "conferido_em"::timestamp >= $1::timestamp 
         AND "conferido_em"::timestamp <= $2::timestamp
         AND COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
-        AND ($3::text = '' OR TRIM("canal"::text) ~* $3::text)
+        ${filtroCanal}
       GROUP BY DATE("conferido_em"::timestamp)
       ORDER BY DATE("conferido_em"::timestamp) ASC
-    `, [dtInicio, dtFim, canalRe]);
+    `, [dtInicio, dtFim]);
 
-    // 6. Gráfico: Peças Expedidas por Data (via processado_em)
     const graficoExpedidas = await pool.query(`
       SELECT 
         DATE("processado_em"::timestamp) AS data,
@@ -637,12 +641,11 @@ app.get('/api/outbound', async (req, res) => {
       WHERE "processado_em"::timestamp >= $1::timestamp 
         AND "processado_em"::timestamp <= $2::timestamp
         AND COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
-        AND ($3::text = '' OR TRIM("canal"::text) ~* $3::text)
+        ${filtroCanal}
       GROUP BY DATE("processado_em"::timestamp)
       ORDER BY DATE("processado_em"::timestamp) ASC
-    `, [dtInicio, dtFim, canalRe]);
+    `, [dtInicio, dtFim]);
 
-    // 6b. Gráfico: Peças por Data e Status (Expedido / Ag. Expedição / Em Fluxo), via importado_em, sem Cancelado
     const graficoStatus = await pool.query(`
       SELECT
         t.data,
@@ -662,31 +665,32 @@ app.get('/api/outbound', async (req, res) => {
         WHERE "importado_em"::timestamp >= $1::timestamp
           AND "importado_em"::timestamp <= $2::timestamp
           AND COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
-          AND ($3::text = '' OR TRIM("canal"::text) ~* $3::text)
+          ${filtroCanal}
       ) t
       GROUP BY t.data
       ORDER BY t.data DESC
-    `, [dtInicio, dtFim, canalRe]);
+    `, [dtInicio, dtFim]);
 
-    // 7. Forecast e % x Forecast (mês de referência = mês da data inicial do filtro, formato AAAAMM)
+    // Forecast e Porcentagens por Canal
     const mesRef = dtInicio.slice(0, 4) + dtInicio.slice(5, 7);
     let forecastPecas = 0;
     const forecastDiario = [];
     let integVsFcst = '0,00%';
     let prodVsFcst = '0,00%';
+
     try {
+      const colForecast = cfgCanal ? cfgCanal.col : 'total';
       const fc = await pool.query(
-        `SELECT COALESCE(SUM("${cfgCanal ? cfgCanal.col : 'total'}"), 0) AS forecast
+        `SELECT COALESCE(SUM("${colForecast}"), 0) AS forecast
            FROM "forecast_outbound"
           WHERE TRIM("mes") = $1`,
         [mesRef]
       );
       forecastPecas = Number(fc.rows[0]?.forecast || 0);
 
-      // Forecast por dia útil (valor do mês ÷ dias úteis do mês), para todos os meses do período
       const dias = diasDoPeriodo(dtInicio.slice(0, 10), dtFim.slice(0, 10));
       const mesesPeriodo = [...new Set(dias.map(d => d.slice(0, 4) + d.slice(5, 7)))];
-      const colForecast = cfgCanal ? cfgCanal.col : 'total';
+      
       const fm = await pool.query(
         `SELECT TRIM("mes") AS mes, COALESCE(SUM("${colForecast}"), 0) AS valor
            FROM "forecast_outbound"
@@ -709,10 +713,10 @@ app.get('/api/outbound', async (req, res) => {
       const pct = await pool.query(
         `SELECT "integrado_x_forecast_" AS integrado, "produzido_x_forecast_" AS produzido
            FROM "saida_porcentagem"
-          WHERE ${cfgCanal ? 'TRIM("modalidade") ~* $2' : `UPPER(TRIM("modalidade")) = 'TOTAL'`}
+          WHERE ${cfgCanal ? `TRIM("modalidade") ILIKE '%${cfgCanal.re}%'` : `UPPER(TRIM("modalidade")) = 'TOTAL'`}
             AND LEFT(TRIM("data"), 6) = $1
           LIMIT 1`,
-        cfgCanal ? [mesRef, cfgCanal.re] : [mesRef]
+        [mesRef]
       );
       if (pct.rows[0]) {
         integVsFcst = (pct.rows[0].integrado || '0,00%').trim();
