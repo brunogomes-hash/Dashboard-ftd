@@ -12,6 +12,13 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
+// ===== NUNCA DEixar O NAVEGADOR/PROXY GUARDAR RESPOSTA DA API =====
+app.use('/api', (req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  next();
+});
 
 // ===== ÚLTIMA ATUALIZAÇÃO (vem da tabela entrada_consolidada, coluna "última_atualização") =====
 const FUSO = 'America/Sao_Paulo';
@@ -101,6 +108,13 @@ async function lerCache(chave) {
   return null;
 }
 
+// Monta a resposta "antiga" deixando CLARO que é cache, desde quando e por quê
+function comoAnterior(anterior, motivo, detalhe) {
+  const extra = { dados_anteriores: true, cache_hora: anterior.hora, cache_motivo: motivo };
+  if (detalhe) extra.cache_erro = detalhe;
+  return { ...anterior.resposta, ...extra };
+}
+
 async function responderComCache(res, chave, resposta, estaVazio) {
   if (!estaVazio(resposta)) {
     salvarCache(chave, resposta);
@@ -108,23 +122,26 @@ async function responderComCache(res, chave, resposta, estaVazio) {
   }
   const anterior = await lerCache(chave);
   if (anterior) {
-    return res.json({ ...anterior.resposta, dados_anteriores: true });
+    return res.json(comoAnterior(anterior, 'resultado_vazio'));
   }
   return res.json(resposta);
 }
 
 async function erroComCache(res, chave, err, titulo) {
-  console.error(titulo + ':', err);
+  console.error(`[${chave}] ${titulo}:`, err);
   const anterior = await lerCache(chave);
   if (anterior) {
-    return res.json({ ...anterior.resposta, dados_anteriores: true });
+    // devolve o último dado bom, mas agora informando o erro real (aparece em /api/... e no log do Render)
+    return res.json(comoAnterior(anterior, 'erro_na_consulta', err.message));
   }
   return res.status(500).json({ error: titulo, detalhe: err.message });
 }
 
 // ===== DETECTOR DE RECARGA DO BANCO =====
 const contagensTabela = {};
+const encolhidaDesde = {};
 const LIMITE_ENCOLHEU = 0.5;
+const MAX_RECARGA_MS = 10 * 60 * 1000; // se ficar "pequena" por mais de 10 min, assume que é o novo normal
 
 async function tabelaEmRecarga(tabela) {
   try {
@@ -132,11 +149,28 @@ async function tabelaEmRecarga(tabela) {
     const r = await pool.query(`SELECT COUNT(*)::int AS n FROM ${nome}`);
     const n = r.rows[0].n;
     const antes = contagensTabela[tabela] || 0;
-    if (n === 0 || (antes > 0 && n < antes * LIMITE_ENCOLHEU)) return true;
+    const encolheu = n === 0 || (antes > 0 && n < antes * LIMITE_ENCOLHEU);
+
+    if (encolheu) {
+      if (n > 0) {
+        const desde = encolhidaDesde[tabela] || (encolhidaDesde[tabela] = Date.now());
+        if (Date.now() - desde > MAX_RECARGA_MS) {
+          // não é recarga: a tabela realmente ficou menor. Atualiza a referência para não travar no cache antigo.
+          contagensTabela[tabela] = n;
+          delete encolhidaDesde[tabela];
+          return false;
+        }
+      }
+      return true;
+    }
+
+    delete encolhidaDesde[tabela];
     contagensTabela[tabela] = n;
     return false;
   } catch (e) {
-    return true;
+    // se não deu para contar, deixa a rota tentar (se falhar, o erro aparece de verdade)
+    console.error(`Aviso: não foi possível contar "${tabela}":`, e.message);
+    return false;
   }
 }
 
@@ -145,7 +179,7 @@ async function servirCacheSeRecarga(res, chave, tabelas) {
     if (await tabelaEmRecarga(t)) {
       const anterior = await lerCache(chave);
       if (anterior) {
-        res.json({ ...anterior.resposta, dados_anteriores: true });
+        res.json(comoAnterior(anterior, 'tabela_em_recarga:' + t));
         return true;
       }
       return false;
@@ -161,6 +195,16 @@ const pastaSite = fs.existsSync(path.join(__dirname, 'public', 'index.html'))
 
 app.use(express.static(pastaSite));
 app.get('/', (req, res) => res.sendFile(path.join(pastaSite, 'index.html')));
+
+// ===== DIAGNÓSTICO: mostra o que está em cache e o que o detector de recarga enxerga =====
+app.get('/api/status-cache', (req, res) => {
+  res.json({
+    agora: agoraBR(),
+    cache_em_memoria: Object.fromEntries(Object.entries(memoria).map(([k, v]) => [k, v.hora])),
+    contagens_tabelas: contagensTabela,
+    encolhida_desde: Object.fromEntries(Object.entries(encolhidaDesde).map(([k, v]) => [k, new Date(v).toISOString()]))
+  });
+});
 
 // ===== HELPERS E DETECCÇÃO DE COLUNAS =====
 const normNome = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
@@ -465,7 +509,7 @@ app.get('/api/outbound', async (req, res) => {
   const cfgCanal = MAPA_CANAL[canalKey] || null;
   const canalRe = cfgCanal ? cfgCanal.re : '';
   const chaveOutbound = `outbound:${canalKey || 'geral'}:${req.query.data_inicio || 'mes'}:${req.query.data_fim || 'atual'}`;
-  
+
   try {
     if (await servirCacheSeRecarga(res, chaveOutbound, ['itens'])) return;
 
@@ -484,8 +528,8 @@ app.get('/api/outbound', async (req, res) => {
       dtFim = `${ano}-${mes}-${String(ultimoDia).padStart(2, '0')} 23:59:59`;
     }
 
-    const filtroCanal = canalRe 
-      ? `AND (TRIM("canal"::text) ILIKE '%${canalRe}%' OR TRIM(COALESCE("modalidade"::text, '')) ILIKE '%${canalRe}%')` 
+    const filtroCanal = canalRe
+      ? `AND (TRIM("canal"::text) ILIKE '%${canalRe}%' OR TRIM(COALESCE("modalidade"::text, '')) ILIKE '%${canalRe}%')`
       : '';
 
     const kpisImportados = await pool.query(`
@@ -647,7 +691,7 @@ app.get('/api/outbound', async (req, res) => {
 
       const dias = diasDoPeriodo(dtInicio.slice(0, 10), dtFim.slice(0, 10));
       const mesesPeriodo = [...new Set(dias.map(d => d.slice(0, 4) + d.slice(5, 7)))];
-      
+
       const fm = await pool.query(
         `SELECT TRIM("mes") AS mes, COALESCE(SUM("${colForecast}"), 0) AS valor
            FROM "forecast_outbound"
@@ -719,13 +763,15 @@ app.get('/api/outbound', async (req, res) => {
   }
 });
 
-// ROUTE 3: RESUMO DE NF (Corrigido para exibir todas as notas atualizadas)
+// ROUTE 3: RESUMO DE NF
 app.get('/api/notas-fluxo', async (req, res) => {
   try {
+    if (await servirCacheSeRecarga(res, 'resumo-nf', ['itens'])) return;
+
     const infoNF = await detectarColunasItens();
     const colDestNF = infoNF.colunas.find(c => normNome(c) === 'destinatario');
     const exprDest = colDestNF ? aspas(colDestNF) : `NULL::text`;
-    
+
     const chaveNF = `COALESCE(NULLIF(TRIM("nota_fiscal"::text), ''), 'SEM NF - ' || COALESCE("pedido_de_venda"::text, 'SEM PEDIDO'))`;
 
     const base = `
@@ -818,9 +864,7 @@ app.get('/api/notas-fluxo', async (req, res) => {
       ultima_atualizacao: await ultimaAtualizacao()
     };
 
-    salvarCache('resumo-nf', resposta);
-    return res.json(resposta);
-
+    await responderComCache(res, 'resumo-nf', resposta, d => d.total_pecas === 0 && d.total_notas === 0);
   } catch (err) {
     await erroComCache(res, 'resumo-nf', err, 'Erro Resumo NF');
   }
