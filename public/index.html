@@ -1162,7 +1162,7 @@ if (temMeta) {
         options: {
           responsive: true,
           maintainAspectRatio: false,
-          layout: { padding: { top: (temMeta || labels.length > 18) ? 64 : 22, right: 10 } },
+          layout: { padding: { top: (temMeta || labels.length > 18) ? 35 : 15, right: 10 } },
           plugins: {
             legend: { display: temMeta, position: 'top', align: 'end', labels: { color: '#aaa', usePointStyle: true, boxWidth: 22, boxHeight: 8, font: { size: 14 }, generateLabels: legendaSimples } },
             datalabels: { color: '#fff', anchor: 'end', align: 'top', clip: false, font: { weight: 'bold', size: 14 }, rotation: labels.length > 18 ? -90 : 0, formatter: val => val > 0 ? fmt(val) : '' }
