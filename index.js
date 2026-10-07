@@ -1149,6 +1149,7 @@ app.get('/api/expedicao', async (req, res) => {
         FROM "itens"
         WHERE ${impTs} >= $1::timestamp AND ${impTs} <= $2::timestamp
           AND ${procTs} IS NULL AND ${semCancelado}
+          AND ${agCarreg}
       ) t
       GROUP BY data
       ORDER BY data DESC`;
