@@ -756,14 +756,24 @@
     }
     // Busca o JSON; se falhar ou vier com erro, devolve o último resultado bom da mesma URL
     async function buscarJSON(url) {
+      let erroRecarga = false;
       try {
         const res = await fetch(url, { cache: 'no-store' });
         const data = await res.json();
         if (data && !data.error) { gravarMemoria('url:' + url, data); return data; }
+        if (data && data.error === 'tabela_em_recarga') erroRecarga = true;
         console.warn('Resposta com erro, usando memória do navegador:', url, data);
       } catch (e) { console.error('Falha ao buscar', url, e); }
       const antigo = lerMemoria('url:' + url);
-      return antigo ? { ...antigo, dados_anteriores: true, cache_motivo: 'falha_no_navegador' } : antigo;
+      if (antigo) return { ...antigo, dados_anteriores: true, cache_motivo: 'falha_no_navegador' };
+      return erroRecarga ? { error: 'tabela_em_recarga' } : antigo;
+    }
+    // Banco em recarga e sem resultado guardado para este período: avisa na tela em vez de mostrar 0
+    function avisarRecarga(data, p) {
+      if (!data || data.error !== 'tabela_em_recarga') return false;
+      const el = document.getElementById(p + 'atualizacao');
+      if (el) el.innerText = '⏳ atualizando dados do banco… tentando de novo em instantes';
+      return true;
     }
     // Texto que avisa quando a aba está mostrando dado antigo (e por quê)
     function avisoDadosAnteriores(data) {
@@ -845,6 +855,7 @@
         const $ = id => document.getElementById(p + id);
 
         const data = await buscarJSON(`/api/outbound?data_inicio=${dataInicio}&data_fim=${dataFim}&canal=${cfg.canal}`);
+        if (avisarRecarga(data, p)) return;
         if (!data || data.error) return;
 
         $('atualizacao').innerText = (data.ultima_atualizacao || '-') + avisoDadosAnteriores(data);
@@ -932,6 +943,7 @@
         const p = cfg.p;
         const $ = id => document.getElementById(p + id);
         const data = await buscarJSON(`/api/expedicao?data_inicio=${dataInicio}&data_fim=${dataFim}`);
+        if (avisarRecarga(data, p)) return;
         if (!data || data.error) return;
 
         $('atualizacao').innerText = data.ultima_atualizacao || '-';
@@ -956,6 +968,7 @@
         const p = cfg.p;
         const $ = id => document.getElementById(p + id);
         const data = await buscarJSON(`/api/inbound?tipo=${cfg.tipo}&data_inicio=${dataInicio}&data_fim=${dataFim}`);
+        if (avisarRecarga(data, p)) return;
         if (!data || data.error) return;
 
         $('sla').innerText = data.sla_24h || '-';
@@ -1136,13 +1149,20 @@
           tension: 0,
           spanGaps: true,
           order: 1,
-                    datalabels: {
-            display: ctx => ctx.dataset.data[ctx.dataIndex] !== null,
-            backgroundColor: 'rgba(0,0,0,0.65)',
+          datalabels: {
+            // o forecast/dia é igual em todos os dias do mês: mostra o número só no 1º ponto de cada trecho
+            display: ctx => {
+              const dados = ctx.dataset.data, i = ctx.dataIndex;
+              if (dados[i] === null) return false;
+              let j = i - 1;
+              while (j >= 0 && dados[j] === null) j--;
+              return j < 0 || dados[j] !== dados[i];
+            },
+            backgroundColor: 'rgba(0,0,0,0.75)',
             borderRadius: 3,
-            padding: { top: 1, bottom: 1, left: 3, right: 3 },
-            rotation: labels.length > 18 ? -90 : 0,
-            offset: 4,
+            padding: { top: 1, bottom: 1, left: 4, right: 4 },
+            rotation: 0,
+            offset: 6,
             color: '#F59E0B',
             anchor: 'end',
             align: 'top',
