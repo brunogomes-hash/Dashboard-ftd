@@ -1,5 +1,5 @@
 const express = require('express');
-const path = require('path');
+const path = path = require('path');
 const fs = require('fs');
 const { Pool } = require('pg');
 
@@ -895,7 +895,7 @@ app.get('/api/notas-fluxo', async (req, res) => {
       em_tratativa_pecas: Number(trat.rows[0]?.pecas || 0),
       por_status: porStatus.rows || [],
       por_canal: porCanal.rows || [],
-      por_tipo: porTipo.rows || [], // Enviado para a nova tabela do site
+      por_tipo: porTipo.rows || [],
       notas: notas.rows || [],
       ultima_atualizacao: await ultimaAtualizacao()
     };
@@ -1117,9 +1117,15 @@ app.get('/api/expedicao', async (req, res) => {
     const coleta = info.colColeta ? `NULLIF(TRIM(${aspas(info.colColeta)}::text), '')` : `NULL::text`;
     const semCancelado = `COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'`;
     const agCarreg = `COALESCE("status_operacional", '') ILIKE '%aguardando exped%'`;
-    const ini = dIni + ' 00:00:00';
-    const fim = dFim + ' 23:59:59';
 
+    const dIni8 = dIni.replace(/-/g, '');
+    const dFim8 = dFim.replace(/-/g, '');
+
+    const dImp = dia8('importado_data');
+    const dConf = dia8('conferido_data');
+    const dProc = dia8('processado_data');
+
+    // KPI do Topo
     const k = await pool.query(`
       SELECT
         COUNT(DISTINCT NULLIF(${transp}, 'SEM TRANSPORTADORA')) AS transportadoras,
@@ -1129,8 +1135,9 @@ app.get('/api/expedicao', async (req, res) => {
       FROM "itens"
       WHERE ${agCarreg} AND ${semCancelado}`);
 
+    // Transportadoras / Dia Ag. Carregamento
     const td = await pool.query(`
-      SELECT DATE(COALESCE(NULLIF("conferido_em"::text, ''), "importado_em"::text)::timestamp) AS data,
+      SELECT ${dia8ISO(`COALESCE(NULLIF(${dConf}, ''),${dImp})`)} AS data,
              ${transp} AS transportadora,
              COALESCE(SUM("quantidade"), 0) AS pecas
       FROM "itens"
@@ -1138,38 +1145,48 @@ app.get('/api/expedicao', async (req, res) => {
       GROUP BY 1, 2
       ORDER BY 1, 3 DESC`);
 
-    const periodo = `"processado_em"::timestamp >= $1::timestamp AND "processado_em"::timestamp <= $2::timestamp AND ${semCancelado}`;
-
+    // Peças Expedidas Mês
     const em = await pool.query(`
-      SELECT COALESCE(SUM("quantidade"), 0) AS pecas FROM "itens" WHERE ${periodo}`, [ini, fim]);
+      SELECT COALESCE(SUM("quantidade"), 0) AS pecas 
+      FROM "itens" 
+      WHERE ${dProc} >= $1::text AND ${dProc} <= $2::text AND ${semCancelado}`, [dIni8, dFim8]);
 
+    // Peças Expedidas por Transportadora Mês
     const et = await pool.query(`
       SELECT ${transp} AS transportadora, COALESCE(SUM("quantidade"), 0) AS pecas
-      FROM "itens" WHERE ${periodo}
-      GROUP BY 1 ORDER BY 2 DESC LIMIT 12`, [ini, fim]);
+      FROM "itens" 
+      WHERE ${dProc} >= $1::text AND ${dProc} <= $2::text AND ${semCancelado}
+      GROUP BY 1 ORDER BY 2 DESC LIMIT 12`, [dIni8, dFim8]);
 
-    const procTs = `NULLIF(TRIM("processado_em"::text), '')::timestamp`;
-    const impTs  = `NULLIF(TRIM("importado_em"::text), '')::timestamp`;
+    // Query Unificada para "NF's por Dia" e "Coletas por Dia"
     const porDia = idExpr => `
-      SELECT TO_CHAR(data, 'YYYY-MM-DD') AS data,
+      SELECT data,
              COUNT(DISTINCT id) FILTER (WHERE tipo = 'exp') AS expedido,
              COUNT(DISTINCT id) FILTER (WHERE tipo = 'sem') AS sem_coleta
       FROM (
-        SELECT DATE(${procTs}) AS data, ${idExpr} AS id, 'exp' AS tipo
+        -- 1. EXPEDIDOS (Processado na data filtrada)
+        SELECT ${dia8ISO(dProc)} AS data, ${idExpr} AS id, 'exp' AS tipo
         FROM "itens"
-        WHERE ${procTs} >= $1::timestamp AND ${procTs} <= $2::timestamp AND ${semCancelado}
+        WHERE ${dProc} >= $1::text AND ${dProc} <= $2::text 
+          AND ${semCancelado}
+        
         UNION ALL
-        SELECT DATE(${impTs}) AS data, ${idExpr} AS id, 'sem' AS tipo
+        
+        -- 2. SEM COLETA / AGUARDANDO CARREGAMENTO (Conferido/Importado na data)
+        SELECT ${dia8ISO(`COALESCE(NULLIF(${dConf}, ''),${dImp})`)} AS data, ${idExpr} AS id, 'sem' AS tipo
         FROM "itens"
-        WHERE ${impTs} >= $1::timestamp AND ${impTs} <= $2::timestamp
-          AND ${procTs} IS NULL AND ${semCancelado}
+        WHERE COALESCE(NULLIF(${dConf}, ''), ${dImp}) >= $1::text 
+          AND COALESCE(NULLIF(${dConf}, ''), ${dImp}) <= $2::text
+          AND (${dProc} IS NULL OR ${dProc} = '')
+          AND ${semCancelado}
           AND ${agCarreg}
       ) t
+      WHERE data IS NOT NULL AND data <> ''
       GROUP BY data
       ORDER BY data DESC`;
 
-    const nfs = await pool.query(porDia(`"nota_fiscal"::text`), [ini, fim]);
-    const col = await pool.query(porDia(coleta), [ini, fim]);
+    const nfs = await pool.query(porDia(`"nota_fiscal"::text`), [dIni8, dFim8]);
+    const col = await pool.query(porDia(coleta), [dIni8, dFim8]);
 
     const k0 = k.rows[0] || {};
     const resposta = {
