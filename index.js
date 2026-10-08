@@ -258,6 +258,34 @@ async function detectarColunasEstoque() {
   return infoEstoque;
 }
 
+// Colunas de entrada_consolidada_porcentagem: detectadas pelo sentido, então
+// continuam funcionando se o cabeçalho da planilha mudar de nome.
+let infoPorcEntrada = null;
+let infoPorcEntradaEm = 0;
+
+async function detectarColunasPorcentagemEntrada() {
+  if (infoPorcEntrada && Date.now() - infoPorcEntradaEm < 5 * 60 * 1000) return infoPorcEntrada;
+
+  const r = await pool.query(
+    `SELECT column_name FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'entrada_consolidada_porcentagem'
+      ORDER BY ordinal_position`
+  );
+  const colunas = r.rows.map(x => x.column_name);
+  const achar = fn => colunas.find(c => fn(normNome(c)));
+
+  infoPorcEntrada = {
+    colunas,
+    colModalidade: achar(n => n.includes('modalidade')) || achar(n => n === 'tipo'),
+    colData: achar(n => n === 'data') || achar(n => n.startsWith('data')),
+    colProduzido: achar(n => (n.includes('produz') || n.includes('armaz')) && n.includes('forecast')),
+    colSla24: achar(n => n.includes('sla') && n.includes('24')),
+    colSla: achar(n => n.includes('sla') && !n.includes('24'))
+  };
+  infoPorcEntradaEm = Date.now();
+  return infoPorcEntrada;
+}
+
 // ROUTE 1: ESTOQUE
 app.get('/api/dashboard', async (req, res) => {
   try {
@@ -1021,15 +1049,26 @@ app.get('/api/inbound', async (req, res) => {
         forecastDiario.push({ data: iso, valor: Math.round(total / uteis) });
       });
 
-      const pc = await pool.query(`
-        SELECT "produzido_x_forecast_" AS armz, "_sla_24h" AS sla24, "_sla" AS sla
-        FROM "entrada_consolidada_porcentagem"
-        WHERE TRIM("modalidade") ~* $2 AND LEFT(TRIM("data"), 6) = $1
-        LIMIT 1`, [mesRef, cfg.modal]);
-      if (pc.rows[0]) {
-        armzXFcst = percentualCheio(pc.rows[0].armz);
-        sla24h = (pc.rows[0].sla24 || '-').trim();
-        sla = (pc.rows[0].sla || '-').trim();
+      const pcInfo = await detectarColunasPorcentagemEntrada();
+      if (pcInfo.colModalidade && pcInfo.colData) {
+        const sel = [
+          pcInfo.colProduzido ? `${aspas(pcInfo.colProduzido)}::text AS armz` : `NULL AS armz`,
+          pcInfo.colSla24 ? `${aspas(pcInfo.colSla24)}::text AS sla24` : `NULL AS sla24`,
+          pcInfo.colSla ? `${aspas(pcInfo.colSla)}::text AS sla` : `NULL AS sla`
+        ].join(', ');
+        const pc = await pool.query(`
+          SELECT ${sel}
+          FROM "entrada_consolidada_porcentagem"
+          WHERE TRIM(${aspas(pcInfo.colModalidade)}::text) ~* $2
+            AND LEFT(REGEXP_REPLACE(TRIM(${aspas(pcInfo.colData)}::text), '[^0-9]', '', 'g'), 6) = $1
+          LIMIT 1`, [mesRef, cfg.modal]);
+        if (pc.rows[0]) {
+          armzXFcst = percentualCheio(pc.rows[0].armz);
+          sla24h = String(pc.rows[0].sla24 || '-').trim();
+          sla = String(pc.rows[0].sla || '-').trim();
+        }
+      } else {
+        console.error('Aviso: não achei modalidade/data em entrada_consolidada_porcentagem. Colunas:', pcInfo.colunas);
       }
     } catch (e) {
       console.error('Aviso: erro ao buscar forecast inbound:', e.message);
