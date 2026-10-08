@@ -343,12 +343,9 @@ app.get('/api/dashboard', async (req, res) => {
           FROM "estoque" ${filtro}`;
         const base = montarBase(filtroEstado);
 
-        // Só o quadro "Peças por Depósitos - Virtuais" também conta as avarias (Normal + Avaria).
-        const filtroEstadoComAvaria = info.colEstado
-          ? `WHERE UPPER(TRIM(${aspas(info.colEstado)}::text)) = 'NORMAL'
-                OR UPPER(TRIM(${aspas(info.colEstado)}::text)) LIKE 'VENCIDO/TRUNCADO'`
-          : '';
-        const baseDepositos = montarBase(filtroEstadoComAvaria);
+        // Só o quadro "Peças por Depósitos - Virtuais" conta TODOS os estados
+        // (NORMAL, DANIFICADO, VENCIDO/TRUNCADO). Os demais números continuam só com NORMAL.
+        const baseDepositos = montarBase('');
 
         const soBlocos = info.colArea
           ? `WHERE UPPER(TRIM(t.area)) IN (${BLOCOS_ESTOQUE.map(b => `'${b}'`).join(', ')})`
