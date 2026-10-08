@@ -336,11 +336,19 @@ app.get('/api/dashboard', async (req, res) => {
         const qtd = `(CASE WHEN TRIM(${aspas(info.colQtd)}::text) ~ '^-?[0-9]+([.,][0-9]+)?$'
                           THEN REPLACE(TRIM(${aspas(info.colQtd)}::text), ',', '.')::numeric END)`;
         const filtroEstado = info.colEstado ? `WHERE UPPER(TRIM(${aspas(info.colEstado)}::text)) = 'NORMAL'` : '';
-        const base = `
+        const montarBase = (filtro) => `
           SELECT TRIM(${aspas(info.colSku)}::text) AS sku, ${qtd} AS q
                  ${info.colCategoria ? `, (${aspas(info.colCategoria)}::text ILIKE '%pulm%') AS pulmao` : ''}
                  ${info.colArea ? `, COALESCE(NULLIF(TRIM(${aspas(info.colArea)}::text), ''), 'SEM ÁREA') AS area` : ''}
-          FROM "estoque" ${filtroEstado}`;
+          FROM "estoque" ${filtro}`;
+        const base = montarBase(filtroEstado);
+
+        // Só o quadro "Peças por Depósitos - Virtuais" também conta as avarias (Normal + Avaria).
+        const filtroEstadoComAvaria = info.colEstado
+          ? `WHERE UPPER(TRIM(${aspas(info.colEstado)}::text)) = 'NORMAL'
+                OR UPPER(TRIM(${aspas(info.colEstado)}::text)) LIKE '%AVARIA%'`
+          : '';
+        const baseDepositos = montarBase(filtroEstadoComAvaria);
 
         const soBlocos = info.colArea
           ? `WHERE UPPER(TRIM(t.area)) IN (${BLOCOS_ESTOQUE.map(b => `'${b}'`).join(', ')})`
@@ -370,7 +378,7 @@ app.get('/api/dashboard', async (req, res) => {
         if (info.colArea) {
           const dp = await pool.query(`
             SELECT area, COALESCE(SUM(q), 0) AS pecas
-            FROM (${base}) t
+            FROM (${baseDepositos}) t
             WHERE q > 0
             GROUP BY area
             ORDER BY pecas DESC

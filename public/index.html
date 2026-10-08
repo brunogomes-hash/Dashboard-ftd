@@ -759,13 +759,13 @@
           interaction: { mode: 'index', intersect: false, axis: 'y' },
           responsive: true,
           maintainAspectRatio: false,
-          layout: { padding: { right: 8 } },
+          layout: { padding: { right: 24 } },
           plugins: {
             legend: { display: false },
             datalabels: { color: '#fff', anchor: 'end', align: 'end', clip: false, font: { weight: 'bold', size: 17 }, formatter: v => v > 0 ? fmt(v) : '' }
           },
           scales: {
-            x: { display: false, beginAtZero: true, grace: '18%' },
+            x: { display: false, beginAtZero: true, grace: '30%' },
             y: { ticks: { color: '#ddd', font: { size: 15, weight: 'bold' } }, grid: { display: false }, border: { color: '#888' } }
           }
         }
