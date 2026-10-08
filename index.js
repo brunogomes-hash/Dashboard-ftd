@@ -6,33 +6,13 @@ const { Pool } = require('pg');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ===== CONEXÃO COM O DATABASE (URL do Supabase ou Neon) =====
-// O pg novo trata sslmode=require (que vem na URL do Neon/Supabase) como verify-full e
-// IGNORA o ssl: { rejectUnauthorized: false } abaixo -> erro SELF_SIGNED_CERT_IN_CHAIN.
-// Por isso removemos os parâmetros de SSL da URL e deixamos só a opção ssl do código.
-function urlSemSsl(url) {
-  try {
-    const u = new URL(url);
-    ['sslmode', 'sslrootcert', 'sslcert', 'sslkey', 'uselibpqcompat'].forEach(p => u.searchParams.delete(p));
-    return u.toString();
-  } catch (e) {
-    return url;
-  }
-}
-
+// ===== CONEXÃO COM O NEON =====
+// A string de conexão deve estar na variável de ambiente DATABASE_URL (Render > Environment)
 const pool = new Pool({
-  connectionString: urlSemSsl(process.env.DATABASE_URL),
+  connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false }
 });
-pool.on('error', e => console.error('Erro no pool do banco:', e.message));
 
-// ===== NUNCA DEixar O NAVEGADOR/PROXY GUARDAR RESPOSTA DA API =====
-app.use('/api', (req, res, next) => {
-  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
-  res.set('Pragma', 'no-cache');
-  res.set('Expires', '0');
-  next();
-});
 
 // ===== ÚLTIMA ATUALIZAÇÃO (vem da tabela entrada_consolidada, coluna "última_atualização") =====
 const FUSO = 'America/Sao_Paulo';
@@ -78,6 +58,9 @@ async function ultimaAtualizacao() {
 }
 
 // ===== CACHE DO ÚLTIMO RESULTADO BOM =====
+// Quando o banco está sendo recarregado (tabela vazia), o site continua mostrando
+// o último resultado válido. Guarda na memória e numa tabela própria "dashboard_cache"
+// (não mexe nas suas tabelas), para sobreviver a reinícios do Render.
 const memoria = {};
 
 async function iniciarCache() {
@@ -122,13 +105,7 @@ async function lerCache(chave) {
   return null;
 }
 
-// Monta a resposta "antiga" deixando CLARO que é cache, desde quando e por quê
-function comoAnterior(anterior, motivo, detalhe) {
-  const extra = { dados_anteriores: true, cache_hora: anterior.hora, cache_motivo: motivo };
-  if (detalhe) extra.cache_erro = detalhe;
-  return { ...anterior.resposta, ...extra };
-}
-
+// Responde com dados novos; se vierem vazios, responde com o último resultado bom
 async function responderComCache(res, chave, resposta, estaVazio) {
   if (!estaVazio(resposta)) {
     salvarCache(chave, resposta);
@@ -136,75 +113,23 @@ async function responderComCache(res, chave, resposta, estaVazio) {
   }
   const anterior = await lerCache(chave);
   if (anterior) {
-    console.warn(`[${chave}] resultado vazio -> servindo cache de ${anterior.hora}`);
-    return res.json(comoAnterior(anterior, 'resultado_vazio'));
+    return res.json({ ...anterior.resposta, dados_anteriores: true });
   }
   return res.json(resposta);
 }
 
+// Se a consulta falhar (ex.: durante a carga), tenta o último resultado bom
 async function erroComCache(res, chave, err, titulo) {
-  console.error(`[${chave}] ${titulo}:`, err);
+  console.error(titulo + ':', err);
   const anterior = await lerCache(chave);
   if (anterior) {
-    // devolve o último dado bom, mas agora informando o erro real (aparece em /api/... e no log do Render)
-    return res.json(comoAnterior(anterior, 'erro_na_consulta', err.message));
+    return res.json({ ...anterior.resposta, dados_anteriores: true });
   }
   return res.status(500).json({ error: titulo, detalhe: err.message });
 }
 
-// ===== DETECTOR DE RECARGA DO BANCO =====
-const contagensTabela = {};
-const encolhidaDesde = {};
-const LIMITE_ENCOLHEU = 0.5;
-const MAX_RECARGA_MS = 10 * 60 * 1000; // se ficar "pequena" por mais de 10 min, assume que é o novo normal
-
-async function tabelaEmRecarga(tabela) {
-  try {
-    const nome = '"' + String(tabela).replace(/"/g, '""') + '"';
-    const r = await pool.query(`SELECT COUNT(*)::int AS n FROM ${nome}`);
-    const n = r.rows[0].n;
-    const antes = contagensTabela[tabela] || 0;
-    const encolheu = n === 0 || (antes > 0 && n < antes * LIMITE_ENCOLHEU);
-
-    if (encolheu) {
-      if (n > 0) {
-        const desde = encolhidaDesde[tabela] || (encolhidaDesde[tabela] = Date.now());
-        if (Date.now() - desde > MAX_RECARGA_MS) {
-          // não é recarga: a tabela realmente ficou menor. Atualiza a referência para não travar no cache antigo.
-          contagensTabela[tabela] = n;
-          delete encolhidaDesde[tabela];
-          return false;
-        }
-      }
-      return true;
-    }
-
-    delete encolhidaDesde[tabela];
-    contagensTabela[tabela] = n;
-    return false;
-  } catch (e) {
-    // se não deu para contar, deixa a rota tentar (se falhar, o erro aparece de verdade)
-    console.error(`Aviso: não foi possível contar "${tabela}":`, e.message);
-    return false;
-  }
-}
-
-async function servirCacheSeRecarga(res, chave, tabelas) {
-  for (const t of tabelas) {
-    if (await tabelaEmRecarga(t)) {
-      const anterior = await lerCache(chave);
-      if (anterior) {
-        console.warn(`[${chave}] tabela "${t}" em recarga -> servindo cache de ${anterior.hora}`);
-        res.json(comoAnterior(anterior, 'tabela_em_recarga:' + t));
-        return true;
-      }
-      return false;
-    }
-  }
-  return false;
-}
-
 // ===== ARQUIVOS DO SITE =====
+// Serve o index.html da pasta "public" se existir; senão, da raiz do projeto
 const pastaSite = fs.existsSync(path.join(__dirname, 'public', 'index.html'))
   ? path.join(__dirname, 'public')
   : __dirname;
@@ -212,24 +137,20 @@ const pastaSite = fs.existsSync(path.join(__dirname, 'public', 'index.html'))
 app.use(express.static(pastaSite));
 app.get('/', (req, res) => res.sendFile(path.join(pastaSite, 'index.html')));
 
-// ===== DIAGNÓSTICO: mostra o que está em cache e o que o detector de recarga enxerga =====
-app.get('/api/status-cache', (req, res) => {
-  res.json({
-    agora: agoraBR(),
-    cache_em_memoria: Object.fromEntries(Object.entries(memoria).map(([k, v]) => [k, v.hora])),
-    contagens_tabelas: contagensTabela,
-    encolhida_desde: Object.fromEntries(Object.entries(encolhidaDesde).map(([k, v]) => [k, new Date(v).toISOString()]))
-  });
-});
-
-// ===== HELPERS E DETECCÇÃO DE COLUNAS =====
+// ROUTE 1: ESTOQUE
+// - Posições e unidades (capacidade / ocupadas / livres) vêm da tabela "capacidade_armazem"
+// - SKUs e peças vêm da tabela "estoque" (colunas código do produto e Estoque)
 const normNome = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 const aspas = nome => '"' + String(nome).replace(/"/g, '""') + '"';
+
+// Blocos (coluna Área) que entram nos totais do Estoque (Total Estoque, SKUs e Picking/Pulmão).
+// O gráfico "Peças por Depósitos" continua mostrando todas as áreas.
 const BLOCOS_ESTOQUE = ['PP', 'PR', 'PQ', 'SP'];
 
 let infoEstoque = null;
 let infoEstoqueEm = 0;
 
+// Descobre os nomes reais das colunas da tabela "estoque" (aceita acento e maiúsculas)
 async function detectarColunasEstoque() {
   const completo = infoEstoque && infoEstoque.colSku && infoEstoque.colQtd && infoEstoque.colCategoria;
   if (infoEstoque && (completo || Date.now() - infoEstoqueEm < 5 * 60 * 1000)) return infoEstoque;
@@ -247,6 +168,7 @@ async function detectarColunasEstoque() {
   const colEstado = achar(n => n === 'estado');
   const colArea = achar(n => n === 'area');
 
+  // Coluna que separa Picking de Pulmão: precisa conter valores com "pulm"
   const prioridade = ['categoria_estrutura', 'categoria', 'estrutura', 'tipo_estrutura', 'tipo_endereco', 'area', 'zona'];
   const candidatas = [...new Set([
     ...prioridade.map(p => colunas.find(c => normNome(c) === p)).filter(Boolean),
@@ -258,7 +180,7 @@ async function detectarColunasEstoque() {
     try {
       const t = await pool.query(`SELECT 1 FROM "estoque" WHERE ${aspas(c)}::text ILIKE '%pulm%' LIMIT 1`);
       if (t.rows.length) { colCategoria = c; break; }
-    } catch (e) {}
+    } catch (e) { /* ignora e tenta a próxima */ }
   }
 
   infoEstoque = { colunas, colSku, colQtd, colCategoria, colEstado, colArea };
@@ -266,11 +188,9 @@ async function detectarColunasEstoque() {
   return infoEstoque;
 }
 
-// ROUTE 1: ESTOQUE
 app.get('/api/dashboard', async (req, res) => {
   try {
-    if (await servirCacheSeRecarga(res, 'estoque', ['estoque', 'capacidade_armazem'])) return;
-
+    // 1) Capacidade por categoria (posições e unidades)
     const cap = await pool.query(`
       SELECT
         TRIM("categoria_estrutura") AS categoria,
@@ -302,19 +222,21 @@ app.get('/api/dashboard', async (req, res) => {
     const pickingRows = linhas.filter(l => !ehPulmao(l));
     const soma = (arr, campo) => arr.reduce((t, l) => t + l[campo], 0);
 
+    // 2) SKUs e peças a partir da tabela "estoque"
     let totalSkus = 0, totalPecas = 0;
     let skuPick = null, pecasPick = null, skuPul = null, pecasPul = null;
     let diag = {};
     let depositos = [];
     let foraSistema = [];
-
     try {
       const info = await detectarColunasEstoque();
       diag = { colunas_estoque: info.colunas, col_sku: info.colSku || null, col_qtd: info.colQtd || null, col_categoria: info.colCategoria || null, col_estado: info.colEstado || null, col_area: info.colArea || null };
+      if (!info.colEstado) diag.aviso = 'Coluna Estado não encontrada na tabela estoque: o filtro Estado = Normal NÃO foi aplicado.';
 
       if (info.colSku && info.colQtd) {
         const qtd = `(CASE WHEN TRIM(${aspas(info.colQtd)}::text) ~ '^-?[0-9]+([.,][0-9]+)?$'
                           THEN REPLACE(TRIM(${aspas(info.colQtd)}::text), ',', '.')::numeric END)`;
+        // Só entra no estoque o que estiver com Estado = Normal
         const filtroEstado = info.colEstado ? `WHERE UPPER(TRIM(${aspas(info.colEstado)}::text)) = 'NORMAL'` : '';
         const base = `
           SELECT TRIM(${aspas(info.colSku)}::text) AS sku, ${qtd} AS q
@@ -322,9 +244,11 @@ app.get('/api/dashboard', async (req, res) => {
                  ${info.colArea ? `, COALESCE(NULLIF(TRIM(${aspas(info.colArea)}::text), ''), 'SEM ÁREA') AS area` : ''}
           FROM "estoque" ${filtroEstado}`;
 
+        // Totais e Picking/Pulmão: só os blocos PP, PR, PQ e SP
         const soBlocos = info.colArea
           ? `WHERE UPPER(TRIM(t.area)) IN (${BLOCOS_ESTOQUE.map(b => `'${b}'`).join(', ')})`
           : '';
+        if (!info.colArea) diag.aviso_area = 'Coluna Área não encontrada na tabela estoque: o filtro de blocos NÃO foi aplicado.';
 
         const tot = await pool.query(`
           SELECT COUNT(DISTINCT sku) FILTER (WHERE q > 0 AND sku <> '') AS skus,
@@ -347,6 +271,7 @@ app.get('/api/dashboard', async (req, res) => {
           });
         }
 
+        // Peças por Depósitos (coluna Área), só Estado = Normal
         if (info.colArea) {
           const dp = await pool.query(`
             SELECT area, COALESCE(SUM(q), 0) AS pecas
@@ -359,9 +284,11 @@ app.get('/api/dashboard', async (req, res) => {
         }
       }
     } catch (e) {
+      console.error('Aviso: não foi possível ler a tabela estoque:', e.message);
       diag = { erro_estoque: e.message };
     }
 
+    // 3) Posições ocupadas fora do sistema (tabela locais_ftd: ativo = S, conta Local por Status)
     try {
       const fs2 = await pool.query(`
         SELECT TRIM("status") AS status, COUNT(DISTINCT "local") AS qtd
@@ -373,7 +300,9 @@ app.get('/api/dashboard', async (req, res) => {
         ORDER BY qtd DESC
         LIMIT 10`);
       foraSistema = fs2.rows.map(r => ({ status: r.status, qtd: Number(r.qtd) }));
-    } catch (e) {}
+    } catch (e) {
+      console.error('Aviso: não foi possível ler locais_ftd:', e.message);
+    }
 
     const capPick = soma(pickingRows, 'posicoes_capacidade');
     const ocupPick = soma(pickingRows, 'posicoes_ocupadas');
@@ -401,51 +330,6 @@ app.get('/api/dashboard', async (req, res) => {
       ultima_atualizacao: await ultimaAtualizacao()
     };
 
-    const anterior = await lerCache('estoque');
-    if (anterior && anterior.resposta) {
-      const a = anterior.resposta;
-      let reaproveitou = false;
-
-      const estoqueVazio = totalPecas === 0 && totalSkus === 0;
-      if (estoqueVazio && a.gerais && a.gerais.total_estoque > 0) {
-        resposta.gerais.total_estoque = a.gerais.total_estoque;
-        resposta.gerais.total_skus = a.gerais.total_skus;
-        ['picking', 'pulmao'].forEach(k => {
-          if (a[k]) {
-            resposta[k].total_pecas = a[k].total_pecas;
-            resposta[k].total_skus = a[k].total_skus;
-          }
-        });
-        if (!resposta.depositos.length && (a.depositos || []).length) resposta.depositos = a.depositos;
-        reaproveitou = true;
-      }
-
-      if (!resposta.fora_sistema.length && (a.fora_sistema || []).length) {
-        resposta.fora_sistema = a.fora_sistema;
-        reaproveitou = true;
-      }
-
-      let capReaproveitada = false;
-      if (!resposta.graficos_picking.length && (a.graficos_picking || []).length) {
-        resposta.graficos_picking = a.graficos_picking;
-        resposta.picking = { ...resposta.picking, capacidade: a.picking.capacidade, ocupadas: a.picking.ocupadas, vazias: a.picking.vazias };
-        capReaproveitada = true;
-      }
-      if (!resposta.graficos_pulmao.length && (a.graficos_pulmao || []).length) {
-        resposta.graficos_pulmao = a.graficos_pulmao;
-        resposta.pulmao = { ...resposta.pulmao, capacidade: a.pulmao.capacidade, ocupadas: a.pulmao.ocupadas, vazias: a.pulmao.vazias };
-        capReaproveitada = true;
-      }
-      if (capReaproveitada) {
-        resposta.gerais.total_posicoes = resposta.picking.capacidade + resposta.pulmao.capacidade;
-        resposta.gerais.posicoes_ocupadas = resposta.picking.ocupadas + resposta.pulmao.ocupadas;
-        resposta.gerais.posicoes_vazias = resposta.picking.vazias + resposta.pulmao.vazias;
-        reaproveitou = true;
-      }
-
-      if (reaproveitou) resposta.dados_parciais_anteriores = true;
-    }
-
     await responderComCache(res, 'estoque', resposta,
       d => d.gerais.total_posicoes === 0 && d.gerais.total_estoque === 0);
   } catch (err) {
@@ -453,11 +337,15 @@ app.get('/api/dashboard', async (req, res) => {
   }
 });
 
-// ===== FORECAST DIÁRIO =====
+// ===== FORECAST DIÁRIO (dias úteis = segunda a sábado, sem feriados) =====
+// Feriados nacionais fixos (MM-DD). Sexta-feira Santa é calculada pela data da Páscoa.
 const FERIADOS_FIXOS = ['01-01', '04-21', '05-01', '09-07', '10-12', '11-02', '11-15', '11-20', '12-25'];
+// Para incluir feriados estaduais/municipais ou dias sem operação, adicione aqui no formato 'AAAA-MM-DD'
 const FERIADOS_EXTRAS = [];
 
-function isoUTC(d) { return d.toISOString().slice(0, 10); }
+function isoUTC(d) {
+  return d.toISOString().slice(0, 10);
+}
 
 function pascoa(ano) {
   const a = ano % 19, b = Math.floor(ano / 100), c = ano % 100;
@@ -486,7 +374,7 @@ function feriadosDoAno(ano) {
 function ehDiaUtil(iso) {
   const [a, m, d] = iso.split('-').map(Number);
   const dt = new Date(Date.UTC(a, m - 1, d));
-  if (dt.getUTCDay() === 0) return false;
+  if (dt.getUTCDay() === 0) return false; // domingo não conta
   return !feriadosDoAno(a).has(iso);
 }
 
@@ -511,24 +399,22 @@ function diasDoPeriodo(isoIni, isoFim) {
   return dias;
 }
 
-// ===== MAPA DE CANAIS =====
+// ===== CANAIS (aba por canal) =====
+// re = padrão para casar o valor da coluna "canal" / "modalidade"; col = coluna do forecast_outbound
 const MAPA_CANAL = {
-  b2b:           { re: 'b2b',          col: 'b2b_total' },
-  b2c:           { re: 'b2c',          col: 'b2c_total' },
-  transferencia: { re: 'transfer',     col: 'transferencias_total' },
-  prefeitura:    { re: 'prefeitura',   col: 'prefeitura_total' }
+  b2b:           { re: '^b2b',        col: 'b2b_total' },
+  b2c:           { re: '^b2c',        col: 'b2c_total' },
+  transferencia: { re: '^transfer',   col: 'transferencias_total' },
+  prefeitura:    { re: '^prefeitura', col: 'prefeitura_total' }
 };
 
-// ROUTE 2: OUTBOUND GERAL (E CANAIS INDIVIDUAIS)
+// ROUTE 2: OUTBOUND GERAL (filtro opcional ?canal=b2b|b2c|transferencia|prefeitura)
 app.get('/api/outbound', async (req, res) => {
-  const canalKey = String(req.query.canal || '').toLowerCase().trim();
+  const canalKey = String(req.query.canal || '').toLowerCase();
   const cfgCanal = MAPA_CANAL[canalKey] || null;
   const canalRe = cfgCanal ? cfgCanal.re : '';
   const chaveOutbound = `outbound:${canalKey || 'geral'}:${req.query.data_inicio || 'mes'}:${req.query.data_fim || 'atual'}`;
-
   try {
-    if (await servirCacheSeRecarga(res, chaveOutbound, ['itens'])) return;
-
     const { data_inicio, data_fim } = req.query;
 
     let dtInicio, dtFim;
@@ -542,16 +428,6 @@ app.get('/api/outbound', async (req, res) => {
       const ultimoDia = new Date(ano, hoje.getMonth() + 1, 0).getDate();
       dtInicio = `${ano}-${mes}-01 00:00:00`;
       dtFim = `${ano}-${mes}-${String(ultimoDia).padStart(2, '0')} 23:59:59`;
-    }
-
-    // A tabela "itens" pode não ter a coluna "modalidade": só filtra por ela se existir (senão dá erro e cai no cache antigo)
-    let filtroCanal = '';
-    if (canalRe) {
-      const infoCanal = await detectarColunasItens();
-      const temModalidade = infoCanal.colunas.some(c => normNome(c) === 'modalidade');
-      filtroCanal = temModalidade
-        ? `AND (TRIM("canal"::text) ILIKE '%${canalRe}%' OR TRIM(COALESCE("modalidade"::text, '')) ILIKE '%${canalRe}%')`
-        : `AND TRIM("canal"::text) ILIKE '%${canalRe}%'`;
     }
 
     const kpisImportados = await pool.query(`
@@ -589,7 +465,6 @@ app.get('/api/outbound', async (req, res) => {
           CASE WHEN "status_da_nota_fiscal" ILIKE '%RETEN%'
                  OR "status_operacional" ILIKE '%RETEN%'
                  OR "status_operacional" ILIKE '%TRATATIVA%'
-                 OR "status_operacional" ILIKE '%corte%'
                THEN "quantidade" ELSE 0 END
         ), 0) AS total_tratativa,
 
@@ -597,7 +472,6 @@ app.get('/api/outbound', async (req, res) => {
           CASE WHEN "status_da_nota_fiscal" ILIKE '%RETEN%'
                  OR "status_operacional" ILIKE '%RETEN%'
                  OR "status_operacional" ILIKE '%TRATATIVA%'
-                 OR "status_operacional" ILIKE '%corte%'
                THEN "pedido_de_venda" END
         ) AS pedidos_tratativa
 
@@ -605,8 +479,8 @@ app.get('/api/outbound', async (req, res) => {
       WHERE "importado_em"::timestamp >= $1::timestamp 
         AND "importado_em"::timestamp <= $2::timestamp
         AND COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
-        ${filtroCanal}
-    `, [dtInicio, dtFim]);
+        AND ($3::text = '' OR TRIM("canal"::text) ~* $3::text)
+    `, [dtInicio, dtFim, canalRe]);
 
     const kpisProduzidos = await pool.query(`
       SELECT 
@@ -616,8 +490,8 @@ app.get('/api/outbound', async (req, res) => {
       WHERE "conferido_em"::timestamp >= $1::timestamp 
         AND "conferido_em"::timestamp <= $2::timestamp
         AND COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
-        ${filtroCanal}
-    `, [dtInicio, dtFim]);
+        AND ($3::text = '' OR TRIM("canal"::text) ~* $3::text)
+    `, [dtInicio, dtFim, canalRe]);
 
     const kpisExpedidos = await pool.query(`
       SELECT 
@@ -627,8 +501,8 @@ app.get('/api/outbound', async (req, res) => {
       WHERE "processado_em"::timestamp >= $1::timestamp 
         AND "processado_em"::timestamp <= $2::timestamp
         AND COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
-        ${filtroCanal}
-    `, [dtInicio, dtFim]);
+        AND ($3::text = '' OR TRIM("canal"::text) ~* $3::text)
+    `, [dtInicio, dtFim, canalRe]);
 
     const graficoIntegradas = await pool.query(`
       SELECT 
@@ -638,11 +512,12 @@ app.get('/api/outbound', async (req, res) => {
       WHERE "importado_em"::timestamp >= $1::timestamp 
         AND "importado_em"::timestamp <= $2::timestamp
         AND COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
-        ${filtroCanal}
+        AND ($3::text = '' OR TRIM("canal"::text) ~* $3::text)
       GROUP BY DATE("importado_em")
       ORDER BY DATE("importado_em") ASC
-    `, [dtInicio, dtFim]);
+    `, [dtInicio, dtFim, canalRe]);
 
+    // 5. Gráfico: Peças e Notas Faturadas por Data (via conferido_em)
     const graficoFaturados = await pool.query(`
       SELECT 
         DATE("conferido_em"::timestamp) AS data,
@@ -652,11 +527,12 @@ app.get('/api/outbound', async (req, res) => {
       WHERE "conferido_em"::timestamp >= $1::timestamp 
         AND "conferido_em"::timestamp <= $2::timestamp
         AND COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
-        ${filtroCanal}
+        AND ($3::text = '' OR TRIM("canal"::text) ~* $3::text)
       GROUP BY DATE("conferido_em"::timestamp)
       ORDER BY DATE("conferido_em"::timestamp) ASC
-    `, [dtInicio, dtFim]);
+    `, [dtInicio, dtFim, canalRe]);
 
+    // 6. Gráfico: Peças Expedidas por Data (via processado_em)
     const graficoExpedidas = await pool.query(`
       SELECT 
         DATE("processado_em"::timestamp) AS data,
@@ -665,11 +541,12 @@ app.get('/api/outbound', async (req, res) => {
       WHERE "processado_em"::timestamp >= $1::timestamp 
         AND "processado_em"::timestamp <= $2::timestamp
         AND COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
-        ${filtroCanal}
+        AND ($3::text = '' OR TRIM("canal"::text) ~* $3::text)
       GROUP BY DATE("processado_em"::timestamp)
       ORDER BY DATE("processado_em"::timestamp) ASC
-    `, [dtInicio, dtFim]);
+    `, [dtInicio, dtFim, canalRe]);
 
+    // 6b. Gráfico: Peças por Data e Status (Expedido / Ag. Expedição / Em Fluxo), via importado_em, sem Cancelado
     const graficoStatus = await pool.query(`
       SELECT
         t.data,
@@ -689,31 +566,31 @@ app.get('/api/outbound', async (req, res) => {
         WHERE "importado_em"::timestamp >= $1::timestamp
           AND "importado_em"::timestamp <= $2::timestamp
           AND COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
-          ${filtroCanal}
+          AND ($3::text = '' OR TRIM("canal"::text) ~* $3::text)
       ) t
       GROUP BY t.data
       ORDER BY t.data DESC
-    `, [dtInicio, dtFim]);
+    `, [dtInicio, dtFim, canalRe]);
 
+    // 7. Forecast e % x Forecast (mês de referência = mês da data inicial do filtro, formato AAAAMM)
     const mesRef = dtInicio.slice(0, 4) + dtInicio.slice(5, 7);
     let forecastPecas = 0;
     const forecastDiario = [];
     let integVsFcst = '0,00%';
     let prodVsFcst = '0,00%';
-
     try {
-      const colForecast = cfgCanal ? cfgCanal.col : 'total';
       const fc = await pool.query(
-        `SELECT COALESCE(SUM("${colForecast}"), 0) AS forecast
+        `SELECT COALESCE(SUM("${cfgCanal ? cfgCanal.col : 'total'}"), 0) AS forecast
            FROM "forecast_outbound"
           WHERE TRIM("mes") = $1`,
         [mesRef]
       );
       forecastPecas = Number(fc.rows[0]?.forecast || 0);
 
+      // Forecast por dia útil (valor do mês ÷ dias úteis do mês), para todos os meses do período
       const dias = diasDoPeriodo(dtInicio.slice(0, 10), dtFim.slice(0, 10));
       const mesesPeriodo = [...new Set(dias.map(d => d.slice(0, 4) + d.slice(5, 7)))];
-
+      const colForecast = cfgCanal ? cfgCanal.col : 'total';
       const fm = await pool.query(
         `SELECT TRIM("mes") AS mes, COALESCE(SUM("${colForecast}"), 0) AS valor
            FROM "forecast_outbound"
@@ -736,10 +613,10 @@ app.get('/api/outbound', async (req, res) => {
       const pct = await pool.query(
         `SELECT "integrado_x_forecast_" AS integrado, "produzido_x_forecast_" AS produzido
            FROM "saida_porcentagem"
-          WHERE ${cfgCanal ? `TRIM("modalidade") ILIKE '%${cfgCanal.re}%'` : `UPPER(TRIM("modalidade")) = 'TOTAL'`}
+          WHERE ${cfgCanal ? 'TRIM("modalidade") ~* $2' : `UPPER(TRIM("modalidade")) = 'TOTAL'`}
             AND LEFT(TRIM("data"), 6) = $1
           LIMIT 1`,
-        [mesRef]
+        cfgCanal ? [mesRef, cfgCanal.re] : [mesRef]
       );
       if (pct.rows[0]) {
         integVsFcst = (pct.rows[0].integrado || '0,00%').trim();
@@ -785,33 +662,26 @@ app.get('/api/outbound', async (req, res) => {
   }
 });
 
-// ROUTE 3: RESUMO DE NF
+// ROUTE 3: RESUMO DE NF (todos os status)
+// Qtde de SKUs: o valor se repete em todas as linhas da nota, então pegamos 1 por nota (MAX), sem somar.
 app.get('/api/notas-fluxo', async (req, res) => {
   try {
-    if (await servirCacheSeRecarga(res, 'resumo-nf', ['itens'])) return;
-
-    const infoNF = await detectarColunasItens();
-    const colDestNF = infoNF.colunas.find(c => normNome(c) === 'destinatario');
-    const exprDest = colDestNF ? aspas(colDestNF) : `NULL::text`;
-
-    const chaveNF = `COALESCE(NULLIF(TRIM("nota_fiscal"::text), ''), 'SEM NF - ' || COALESCE("pedido_de_venda"::text, 'SEM PEDIDO'))`;
-
     const base = `
       WITH base AS (
         SELECT
-          ${chaveNF} AS nota_fiscal,
+          "nota_fiscal"::text AS nota_fiscal,
           COALESCE(NULLIF(TRIM("status_operacional"), ''), 'SEM STATUS') AS status,
-          COALESCE(NULLIF(TRIM("canal"), ''), 'SEM CANAL') AS canal,
-          MAX(${exprDest}) AS destinatario,
+          MAX("canal") AS canal,
+          MAX("destinatário") AS destinatario,
           MAX(CASE WHEN TRIM("qtde_de_produto"::text) ~ '^[0-9]+([.,][0-9]+)?$'
                    THEN REPLACE(TRIM("qtde_de_produto"::text), ',', '.')::numeric END) AS skus,
           COALESCE(SUM("quantidade"), 0) AS pecas,
           COUNT(DISTINCT "pedido_de_venda") AS pedidos
         FROM "itens"
-        WHERE COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
-        GROUP BY ${chaveNF},
-                 COALESCE(NULLIF(TRIM("status_operacional"), ''), 'SEM STATUS'),
-                 COALESCE(NULLIF(TRIM("canal"), ''), 'SEM CANAL')
+        WHERE "nota_fiscal" IS NOT NULL
+          AND TRIM("nota_fiscal"::text) <> ''
+        GROUP BY "nota_fiscal"::text,
+                 COALESCE(NULLIF(TRIM("status_operacional"), ''), 'SEM STATUS')
       ),
       nf AS (
         SELECT
@@ -829,8 +699,7 @@ app.get('/api/notas-fluxo', async (req, res) => {
       ${base}
       SELECT nota_fiscal, status, canal, destinatario, skus, pedidos, pecas
       FROM base
-      ORDER BY (CASE WHEN status ILIKE '%corte%' OR status ILIKE '%reten%' OR status ILIKE '%tratativa%' THEN 0 ELSE 1 END),
-               pecas DESC
+      ORDER BY nota_fiscal DESC
       LIMIT 5000
     `);
 
@@ -843,19 +712,19 @@ app.get('/api/notas-fluxo', async (req, res) => {
         COALESCE(SUM(pecas), 0) AS pecas
       FROM base
       GROUP BY status
-      ORDER BY pecas DESC
+      ORDER BY notas DESC
     `);
 
     const porCanal = await pool.query(`
       ${base}
       SELECT
-        canal,
-        COUNT(DISTINCT nota_fiscal) AS notas,
+        COALESCE(NULLIF(TRIM(canal), ''), 'SEM CANAL') AS canal,
+        COUNT(*) AS notas,
         COALESCE(SUM(skus), 0) AS skus,
         COALESCE(SUM(pecas), 0) AS pecas
-      FROM base
-      GROUP BY canal
-      ORDER BY pecas DESC
+      FROM nf
+      GROUP BY 1
+      ORDER BY notas DESC
     `);
 
     const totais = await pool.query(`
@@ -867,37 +736,30 @@ app.get('/api/notas-fluxo', async (req, res) => {
       FROM nf
     `);
 
-    const trat = await pool.query(`
-      ${base}
-      SELECT COUNT(DISTINCT nota_fiscal) AS notas, COALESCE(SUM(pecas), 0) AS pecas
-      FROM base
-      WHERE status ILIKE '%reten%' OR status ILIKE '%tratativa%' OR status ILIKE '%corte%'
-    `);
-
     const resposta = {
       total_notas: Number(totais.rows[0]?.total_notas || 0),
       total_skus: Number(totais.rows[0]?.total_skus || 0),
       total_pecas: Number(totais.rows[0]?.total_pecas || 0),
-      em_tratativa_notas: Number(trat.rows[0]?.notas || 0),
-      em_tratativa_pecas: Number(trat.rows[0]?.pecas || 0),
-      por_status: porStatus.rows || [],
-      por_canal: porCanal.rows || [],
-      notas: notas.rows || [],
+      por_status: porStatus.rows,
+      por_canal: porCanal.rows,
+      notas: notas.rows,
       ultima_atualizacao: await ultimaAtualizacao()
     };
 
-    await responderComCache(res, 'resumo-nf', resposta, d => d.total_pecas === 0 && d.total_notas === 0);
+    await responderComCache(res, 'resumo-nf', resposta, d => d.total_notas === 0);
   } catch (err) {
     await erroComCache(res, 'resumo-nf', err, 'Erro Resumo NF');
   }
 });
 
-// ROUTE 4: ENTRADA (RECEBIMENTO E DEVOLUÇÃO)
+// ROUTE 4: ENTRADA (RECEBIMENTO = regra COMPRA | DEVOLUÇÃO = regra DEVOL)
 const TIPOS_INBOUND = {
   recebimento: { regra: '^compra', colForecast: 'recebimento', modal: '^(receb|compra)' },
   devolucao:   { regra: '^devol',  colForecast: 'devolucao',   modal: '^devol' }
 };
 
+// Converte o percentual da tabela em "valor cheio": 0,64% -> 64% | 0,6437 -> 64,37%
+// Valores acima de 10 são considerados já convertidos e ficam como estão.
 function percentualCheio(txt) {
   const n = parseFloat(String(txt ?? '').replace('%', '').replace(/\./g, '').replace(',', '.'));
   if (isNaN(n)) return '0%';
@@ -905,6 +767,7 @@ function percentualCheio(txt) {
   return Number(v.toFixed(2)).toString().replace('.', ',') + '%';
 }
 
+// Converte texto de data (AAAA-MM-DD..., DD/MM/AAAA... ou AAAAMMDD) em date; devolve NULL se não reconhecer
 const dataSQL = col => `(CASE
     WHEN TRIM(${col}::text) ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}' THEN LEFT(TRIM(${col}::text), 10)::date
     WHEN TRIM(${col}::text) ~ '^[0-9]{2}/[0-9]{2}/[0-9]{4}' THEN TO_DATE(LEFT(TRIM(${col}::text), 10), 'DD/MM/YYYY')
@@ -925,8 +788,7 @@ app.get('/api/inbound', async (req, res) => {
   const chave = `inbound:${tipoKey}:${dIni}:${dFim}`;
 
   try {
-    if (await servirCacheSeRecarga(res, chave, ['entrada_consolidada'])) return;
-
+    // Filtro base: regra (COMPRA/DEVOL) e sem cancelados
     const filtroBase = `
       TRIM("regra") ~* '${cfg.regra}'
       AND COALESCE("status_processo", '') NOT ILIKE '%cancel%'
@@ -944,6 +806,7 @@ app.get('/api/inbound', async (req, res) => {
     const cad = '"data_de_cadastro_da_or"';
     const fim = '"data_fim_alocação"';
 
+    // Recebidas (cadastro da OR) e Fluxo (ainda não armazenadas)
     const kRec = await pool.query(`
       SELECT
         COALESCE(SUM(q), 0) AS pecas,
@@ -952,6 +815,7 @@ app.get('/api/inbound', async (req, res) => {
         COUNT(DISTINCT CASE WHEN sp NOT ILIKE '%armazen%' THEN orr END) AS fluxo_ors
       FROM ${sub(cad)} WHERE ${noPeriodo}`, params);
 
+    // Armazenadas (data fim da alocação)
     const kArm = await pool.query(`
       SELECT COALESCE(SUM(q), 0) AS pecas, COUNT(DISTINCT orr) AS ors
       FROM ${sub(fim)} WHERE ${noPeriodo}`, params);
@@ -970,6 +834,7 @@ app.get('/api/inbound', async (req, res) => {
              COALESCE(SUM(CASE WHEN sp NOT ILIKE '%armazen%' THEN q END), 0) AS fluxo
       FROM ${sub(cad)} WHERE ${noPeriodo} GROUP BY t.d ORDER BY t.d DESC`, params);
 
+    // Para conferir os valores de status_processo existentes
     let statusProcessos = [];
     try {
       const sp = await pool.query(`
@@ -979,6 +844,7 @@ app.get('/api/inbound', async (req, res) => {
       statusProcessos = sp.rows;
     } catch (e) {}
 
+    // Forecast do mês, forecast por dia útil e percentuais
     const mesRef = dIni.slice(0, 4) + dIni.slice(5, 7);
     let forecastPecas = 0;
     const forecastDiario = [];
@@ -1050,6 +916,7 @@ app.get('/api/inbound', async (req, res) => {
 });
 
 // ROUTE 5: OUTBOUND - EXPEDIÇÃO
+// Ag. Carregamento = status "Aguardando Expedição" (situação atual). Gráficos de expedidas usam processado_em.
 let infoItens = null;
 let infoItensEm = 0;
 
@@ -1064,6 +931,7 @@ async function detectarColunasItens() {
 
   const colTransp = achar(n => n === 'transportadora') || achar(n => n.includes('transportadora')) || achar(n => n.includes('transportador'));
 
+  // Identificador da coleta: prefere "carga" (e variações); senão qualquer coluna com "coleta" no nome
   const preferidas = ['coleta', 'numero_coleta', 'id_coleta', 'carga', 'pre_carga', 'titulo_romaneio'];
   let colColeta = null;
   for (const p of preferidas) {
@@ -1094,8 +962,6 @@ app.get('/api/expedicao', async (req, res) => {
   const chave = `expedicao:${dIni}:${dFim}`;
 
   try {
-    if (await servirCacheSeRecarga(res, chave, ['itens'])) return;
-
     const info = await detectarColunasItens();
     const transp = info.colTransp
       ? `COALESCE(NULLIF(TRIM(${aspas(info.colTransp)}::text), ''), 'SEM TRANSPORTADORA')`
@@ -1106,6 +972,7 @@ app.get('/api/expedicao', async (req, res) => {
     const ini = dIni + ' 00:00:00';
     const fim = dFim + ' 23:59:59';
 
+    // KPIs de Ag. Carregamento (situação atual, sem filtro de data)
     const k = await pool.query(`
       SELECT
         COUNT(DISTINCT NULLIF(${transp}, 'SEM TRANSPORTADORA')) AS transportadoras,
@@ -1115,6 +982,7 @@ app.get('/api/expedicao', async (req, res) => {
       FROM "itens"
       WHERE ${agCarreg} AND ${semCancelado}`);
 
+    // Transportadoras por dia (Ag. Carregamento)
     const td = await pool.query(`
       SELECT DATE(COALESCE(NULLIF("conferido_em"::text, ''), "importado_em"::text)::timestamp) AS data,
              ${transp} AS transportadora,
@@ -1124,6 +992,7 @@ app.get('/api/expedicao', async (req, res) => {
       GROUP BY 1, 2
       ORDER BY 1, 3 DESC`);
 
+    // Expedidas no período (processado_em)
     const periodo = `"processado_em"::timestamp >= $1::timestamp AND "processado_em"::timestamp <= $2::timestamp AND ${semCancelado}`;
 
     const em = await pool.query(`
@@ -1134,22 +1003,21 @@ app.get('/api/expedicao', async (req, res) => {
       FROM "itens" WHERE ${periodo}
       GROUP BY 1 ORDER BY 2 DESC LIMIT 12`, [ini, fim]);
 
-    const procTs = `NULLIF(TRIM("processado_em"::text), '')::timestamp`;
-    const impTs  = `NULLIF(TRIM("importado_em"::text), '')::timestamp`;
+    // Por dia: "Expedido" = itens com processado_em naquele dia;
+    // "Sem coleta" = itens importados naquele dia que ainda estão com processado_em vazio.
     const porDia = idExpr => `
-      SELECT TO_CHAR(data, 'YYYY-MM-DD') AS data,
+      SELECT data,
              COUNT(DISTINCT id) FILTER (WHERE tipo = 'exp') AS expedido,
              COUNT(DISTINCT id) FILTER (WHERE tipo = 'sem') AS sem_coleta
       FROM (
-        SELECT DATE(${procTs}) AS data, ${idExpr} AS id, 'exp' AS tipo
+        SELECT DATE("processado_em") AS data, ${idExpr} AS id, 'exp' AS tipo
         FROM "itens"
-        WHERE ${procTs} >= $1::timestamp AND ${procTs} <= $2::timestamp AND ${semCancelado}
+        WHERE "processado_em" >= $1::timestamp AND "processado_em" <= $2::timestamp AND ${semCancelado}
         UNION ALL
-        SELECT DATE(${impTs}) AS data, ${idExpr} AS id, 'sem' AS tipo
+        SELECT DATE("importado_em") AS data, ${idExpr} AS id, 'sem' AS tipo
         FROM "itens"
-        WHERE ${impTs} >= $1::timestamp AND ${impTs} <= $2::timestamp
-          AND ${procTs} IS NULL AND ${semCancelado}
-          AND ${agCarreg}
+        WHERE "importado_em" >= $1::timestamp AND "importado_em" <= $2::timestamp
+          AND "processado_em" IS NULL AND ${semCancelado}
       ) t
       GROUP BY data
       ORDER BY data DESC`;
