@@ -7,6 +7,9 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ===== CONEXÃO COM O DATABASE (URL do Supabase ou Neon) =====
+// O pg novo trata sslmode=require (que vem na URL do Neon/Supabase) como verify-full e
+// IGNORA o ssl: { rejectUnauthorized: false } abaixo -> erro SELF_SIGNED_CERT_IN_CHAIN.
+// Por isso removemos os parâmetros de SSL da URL e deixamos só a opção ssl do código.
 function urlSemSsl(url) {
   try {
     const u = new URL(url);
@@ -23,7 +26,7 @@ const pool = new Pool({
 });
 pool.on('error', e => console.error('Erro no pool do banco:', e.message));
 
-// ===== NUNCA DEIXAR O NAVEGADOR/PROXY GUARDAR RESPOSTA DA API =====
+// ===== NUNCA DEixar O NAVEGADOR/PROXY GUARDAR RESPOSTA DA API =====
 app.use('/api', (req, res, next) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
   res.set('Pragma', 'no-cache');
@@ -31,7 +34,7 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
-// ===== ÚLTIMA ATUALIZAÇÃO =====
+// ===== ÚLTIMA ATUALIZAÇÃO (vem da tabela entrada_consolidada, coluna "última_atualização") =====
 const FUSO = 'America/Sao_Paulo';
 const agoraBR = () => new Date().toLocaleString('pt-BR', { timeZone: FUSO });
 
@@ -94,7 +97,7 @@ iniciarCache();
 
 async function salvarCache(chave, resposta) {
   const hora = agoraBR();
-  memoria[chave] = { resposta, hora, ts: Date.now() };
+  memoria[chave] = { resposta, hora };
   try {
     await pool.query(
       `INSERT INTO dashboard_cache (chave, payload, atualizado_em) VALUES ($1, $2, $3)
@@ -119,6 +122,7 @@ async function lerCache(chave) {
   return null;
 }
 
+// Monta a resposta "antiga" deixando CLARO que é cache, desde quando e por quê
 function comoAnterior(anterior, motivo, detalhe) {
   const extra = { dados_anteriores: true, cache_hora: anterior.hora, cache_motivo: motivo };
   if (detalhe) extra.cache_erro = detalhe;
@@ -138,39 +142,11 @@ async function responderComCache(res, chave, resposta, estaVazio) {
   return res.json(resposta);
 }
 
-// ===== MODO DIRETO =====
-const TOLERANCIA_VAZIO_MS = 5 * 60 * 1000;
-
-function cacheRecente(anterior) {
-  return anterior && anterior.ts && (Date.now() - anterior.ts) < TOLERANCIA_VAZIO_MS;
-}
-
-async function responderDireto(res, chave, resposta, estaVazio) {
-  if (!estaVazio(resposta)) {
-    salvarCache(chave, resposta);
-    return res.json(resposta);
-  }
-  const anterior = await lerCache(chave);
-  if (cacheRecente(anterior)) {
-    console.warn(`[${chave}] vazio -> segurando cache de ${anterior.hora} (até 5 min)`);
-    return res.json(comoAnterior(anterior, 'aguardando_dados'));
-  }
-  return res.json(resposta);
-}
-
-async function erroDireto(res, chave, err, titulo) {
-  console.error(`[${chave}] ${titulo}:`, err);
-  const anterior = await lerCache(chave);
-  if (cacheRecente(anterior)) {
-    return res.json(comoAnterior(anterior, 'erro_na_consulta', err.message));
-  }
-  return res.status(500).json({ error: titulo, detalhe: err.message });
-}
-
 async function erroComCache(res, chave, err, titulo) {
   console.error(`[${chave}] ${titulo}:`, err);
   const anterior = await lerCache(chave);
   if (anterior) {
+    // devolve o último dado bom, mas agora informando o erro real (aparece em /api/... e no log do Render)
     return res.json(comoAnterior(anterior, 'erro_na_consulta', err.message));
   }
   return res.status(500).json({ error: titulo, detalhe: err.message });
@@ -180,7 +156,7 @@ async function erroComCache(res, chave, err, titulo) {
 const contagensTabela = {};
 const encolhidaDesde = {};
 const LIMITE_ENCOLHEU = 0.5;
-const MAX_RECARGA_MS = 3 * 60 * 1000;
+const MAX_RECARGA_MS = 10 * 60 * 1000; // se ficar "pequena" por mais de 10 min, assume que é o novo normal
 
 async function tabelaEmRecarga(tabela) {
   try {
@@ -194,6 +170,7 @@ async function tabelaEmRecarga(tabela) {
       if (n > 0) {
         const desde = encolhidaDesde[tabela] || (encolhidaDesde[tabela] = Date.now());
         if (Date.now() - desde > MAX_RECARGA_MS) {
+          // não é recarga: a tabela realmente ficou menor. Atualiza a referência para não travar no cache antigo.
           contagensTabela[tabela] = n;
           delete encolhidaDesde[tabela];
           return false;
@@ -206,6 +183,7 @@ async function tabelaEmRecarga(tabela) {
     contagensTabela[tabela] = n;
     return false;
   } catch (e) {
+    // se não deu para contar, deixa a rota tentar (se falhar, o erro aparece de verdade)
     console.error(`Aviso: não foi possível contar "${tabela}":`, e.message);
     return false;
   }
@@ -234,6 +212,7 @@ const pastaSite = fs.existsSync(path.join(__dirname, 'public', 'index.html'))
 app.use(express.static(pastaSite));
 app.get('/', (req, res) => res.sendFile(path.join(pastaSite, 'index.html')));
 
+// ===== DIAGNÓSTICO: mostra o que está em cache e o que o detector de recarga enxerga =====
 app.get('/api/status-cache', (req, res) => {
   res.json({
     agora: agoraBR(),
@@ -243,7 +222,7 @@ app.get('/api/status-cache', (req, res) => {
   });
 });
 
-// ===== HELPERS E DETECÇÃO DE COLUNAS =====
+// ===== HELPERS E DETECCÇÃO DE COLUNAS =====
 const normNome = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 const aspas = nome => '"' + String(nome).replace(/"/g, '""') + '"';
 const BLOCOS_ESTOQUE = ['PP', 'PR', 'PQ', 'SP'];
@@ -540,7 +519,7 @@ const MAPA_CANAL = {
   prefeitura:    { re: 'prefeitura',   col: 'prefeitura_total' }
 };
 
-// ROUTE 2: OUTBOUND GERAL (E CANAIS INDIVIDUAIS) - COM TRATAMENTO DE STRING VAZIA
+// ROUTE 2: OUTBOUND GERAL (E CANAIS INDIVIDUAIS)
 app.get('/api/outbound', async (req, res) => {
   const canalKey = String(req.query.canal || '').toLowerCase().trim();
   const cfgCanal = MAPA_CANAL[canalKey] || null;
@@ -548,6 +527,8 @@ app.get('/api/outbound', async (req, res) => {
   const chaveOutbound = `outbound:${canalKey || 'geral'}:${req.query.data_inicio || 'mes'}:${req.query.data_fim || 'atual'}`;
 
   try {
+    if (await servirCacheSeRecarga(res, chaveOutbound, ['itens'])) return;
+
     const { data_inicio, data_fim } = req.query;
 
     let dtInicio, dtFim;
@@ -563,6 +544,7 @@ app.get('/api/outbound', async (req, res) => {
       dtFim = `${ano}-${mes}-${String(ultimoDia).padStart(2, '0')} 23:59:59`;
     }
 
+    // A tabela "itens" pode não ter a coluna "modalidade": só filtra por ela se existir (senão dá erro e cai no cache antigo)
     let filtroCanal = '';
     if (canalRe) {
       const infoCanal = await detectarColunasItens();
@@ -572,116 +554,120 @@ app.get('/api/outbound', async (req, res) => {
         : `AND TRIM("canal"::text) ILIKE '%${canalRe}%'`;
     }
 
-    // Helper SQL para evitar erros de casting quando a data é string vazia ("")
-    const parseTs = col => `NULLIF(TRIM("${col}"::text), '')::timestamp`;
-
-    // Integradas
     const kpisImportados = await pool.query(`
       SELECT 
         COALESCE(SUM("quantidade"), 0) AS total_integradas,
-        COUNT(DISTINCT "pedido_de_venda") AS pedidos_integrados
+        COUNT(DISTINCT "pedido_de_venda") AS pedidos_integrados,
+
+        COALESCE(SUM(
+          CASE WHEN "status_operacional" ILIKE '%importado%'
+                 OR "status_operacional" ILIKE '%separa%'
+                 OR "status_operacional" ILIKE '%onda%'
+                 OR "status_operacional" ILIKE '%confer%'
+               THEN "quantidade" ELSE 0 END
+        ), 0) AS total_fluxo,
+
+        COUNT(DISTINCT 
+          CASE WHEN "status_operacional" ILIKE '%importado%'
+                 OR "status_operacional" ILIKE '%separa%'
+                 OR "status_operacional" ILIKE '%onda%'
+                 OR "status_operacional" ILIKE '%confer%'
+               THEN "pedido_de_venda" END
+        ) AS pedidos_fluxo,
+
+        COALESCE(SUM(
+          CASE WHEN "status_operacional" ILIKE '%aguardando exped%'
+               THEN "quantidade" ELSE 0 END
+        ), 0) AS total_coleta,
+
+        COUNT(DISTINCT 
+          CASE WHEN "status_operacional" ILIKE '%aguardando exped%'
+               THEN "pedido_de_venda" END
+        ) AS pedidos_coleta,
+
+        COALESCE(SUM(
+          CASE WHEN "status_da_nota_fiscal" ILIKE '%RETEN%'
+                 OR "status_operacional" ILIKE '%RETEN%'
+                 OR "status_operacional" ILIKE '%TRATATIVA%'
+                 OR "status_operacional" ILIKE '%corte%'
+               THEN "quantidade" ELSE 0 END
+        ), 0) AS total_tratativa,
+
+        COUNT(DISTINCT 
+          CASE WHEN "status_da_nota_fiscal" ILIKE '%RETEN%'
+                 OR "status_operacional" ILIKE '%RETEN%'
+                 OR "status_operacional" ILIKE '%TRATATIVA%'
+                 OR "status_operacional" ILIKE '%corte%'
+               THEN "pedido_de_venda" END
+        ) AS pedidos_tratativa
+
       FROM "itens"
-      WHERE ${parseTs('importado_em')} >= $1::timestamp 
-        AND ${parseTs('importado_em')} <= $2::timestamp
+      WHERE "importado_em"::timestamp >= $1::timestamp 
+        AND "importado_em"::timestamp <= $2::timestamp
         AND COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
         ${filtroCanal}
     `, [dtInicio, dtFim]);
 
-    // Em Fluxo / Em Coleta / Em Tratativa
-    const kpisStatus = await pool.query(`
-      SELECT
-        COALESCE(SUM(CASE WHEN "status_operacional" ILIKE '%importado%'
-                            OR "status_operacional" ILIKE '%separa%'
-                            OR "status_operacional" ILIKE '%onda%'
-                            OR "status_operacional" ILIKE '%confer%'
-                          THEN "quantidade" ELSE 0 END), 0) AS total_fluxo,
-        COUNT(DISTINCT CASE WHEN "status_operacional" ILIKE '%importado%'
-                            OR "status_operacional" ILIKE '%separa%'
-                            OR "status_operacional" ILIKE '%onda%'
-                            OR "status_operacional" ILIKE '%confer%'
-                          THEN "pedido_de_venda" END) AS pedidos_fluxo,
-        COALESCE(SUM(CASE WHEN "status_operacional" ILIKE '%aguardando exped%'
-                          THEN "quantidade" ELSE 0 END), 0) AS total_coleta,
-        COUNT(DISTINCT CASE WHEN "status_operacional" ILIKE '%aguardando exped%'
-                          THEN "pedido_de_venda" END) AS pedidos_coleta,
-        COALESCE(SUM(CASE WHEN "status_da_nota_fiscal" ILIKE '%RETEN%'
-                            OR "status_operacional" ILIKE '%RETEN%'
-                            OR "status_operacional" ILIKE '%TRATATIVA%'
-                            OR "status_operacional" ILIKE '%corte%'
-                          THEN "quantidade" ELSE 0 END), 0) AS total_tratativa,
-        COUNT(DISTINCT CASE WHEN "status_da_nota_fiscal" ILIKE '%RETEN%'
-                            OR "status_operacional" ILIKE '%RETEN%'
-                            OR "status_operacional" ILIKE '%TRATATIVA%'
-                            OR "status_operacional" ILIKE '%corte%'
-                          THEN "pedido_de_venda" END) AS pedidos_tratativa
-      FROM "itens"
-      WHERE COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
-        ${filtroCanal}
-    `);
-
-    // Produzidas
     const kpisProduzidos = await pool.query(`
       SELECT 
         COALESCE(SUM("quantidade"), 0) AS total_produzidas,
         COUNT(DISTINCT "pedido_de_venda") AS pedidos_produzidos
       FROM "itens"
-      WHERE ${parseTs('conferido_em')} >= $1::timestamp 
-        AND ${parseTs('conferido_em')} <= $2::timestamp
+      WHERE "conferido_em"::timestamp >= $1::timestamp 
+        AND "conferido_em"::timestamp <= $2::timestamp
         AND COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
         ${filtroCanal}
     `, [dtInicio, dtFim]);
 
-    // Expedidas
     const kpisExpedidos = await pool.query(`
       SELECT 
         COALESCE(SUM("quantidade"), 0) AS total_expedidas,
         COUNT(DISTINCT "pedido_de_venda") AS pedidos_expedidos
       FROM "itens"
-      WHERE ${parseTs('processado_em')} >= $1::timestamp 
-        AND ${parseTs('processado_em')} <= $2::timestamp
+      WHERE "processado_em"::timestamp >= $1::timestamp 
+        AND "processado_em"::timestamp <= $2::timestamp
         AND COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
         ${filtroCanal}
     `, [dtInicio, dtFim]);
 
-    // Gráficos Outbound
     const graficoIntegradas = await pool.query(`
       SELECT 
-        DATE(${parseTs('importado_em')}) AS data,
+        DATE("importado_em") AS data,
         COALESCE(SUM("quantidade"), 0) AS total_pecas
       FROM "itens"
-      WHERE ${parseTs('importado_em')} >= $1::timestamp 
-        AND ${parseTs('importado_em')} <= $2::timestamp
+      WHERE "importado_em"::timestamp >= $1::timestamp 
+        AND "importado_em"::timestamp <= $2::timestamp
         AND COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
         ${filtroCanal}
-      GROUP BY DATE(${parseTs('importado_em')})
-      ORDER BY DATE(${parseTs('importado_em')}) ASC
+      GROUP BY DATE("importado_em")
+      ORDER BY DATE("importado_em") ASC
     `, [dtInicio, dtFim]);
 
     const graficoFaturados = await pool.query(`
       SELECT 
-        DATE(${parseTs('conferido_em')}) AS data,
+        DATE("conferido_em"::timestamp) AS data,
         COALESCE(SUM("quantidade"), 0) AS total_pecas,
         COUNT(DISTINCT "nota_fiscal") AS total_notas
       FROM "itens"
-      WHERE ${parseTs('conferido_em')} >= $1::timestamp 
-        AND ${parseTs('conferido_em')} <= $2::timestamp
+      WHERE "conferido_em"::timestamp >= $1::timestamp 
+        AND "conferido_em"::timestamp <= $2::timestamp
         AND COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
         ${filtroCanal}
-      GROUP BY DATE(${parseTs('conferido_em')})
-      ORDER BY DATE(${parseTs('conferido_em')}) ASC
+      GROUP BY DATE("conferido_em"::timestamp)
+      ORDER BY DATE("conferido_em"::timestamp) ASC
     `, [dtInicio, dtFim]);
 
     const graficoExpedidas = await pool.query(`
       SELECT 
-        DATE(${parseTs('processado_em')}) AS data,
+        DATE("processado_em"::timestamp) AS data,
         COALESCE(SUM("quantidade"), 0) AS total_pecas
       FROM "itens"
-      WHERE ${parseTs('processado_em')} >= $1::timestamp 
-        AND ${parseTs('processado_em')} <= $2::timestamp
+      WHERE "processado_em"::timestamp >= $1::timestamp 
+        AND "processado_em"::timestamp <= $2::timestamp
         AND COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
         ${filtroCanal}
-      GROUP BY DATE(${parseTs('processado_em')})
-      ORDER BY DATE(${parseTs('processado_em')}) ASC
+      GROUP BY DATE("processado_em"::timestamp)
+      ORDER BY DATE("processado_em"::timestamp) ASC
     `, [dtInicio, dtFim]);
 
     const graficoStatus = await pool.query(`
@@ -692,7 +678,7 @@ app.get('/api/outbound', async (req, res) => {
         COALESCE(SUM(CASE WHEN t.grupo = 'fluxo' THEN t.q END), 0) AS em_fluxo
       FROM (
         SELECT
-          DATE(${parseTs('importado_em')}) AS data,
+          DATE("importado_em"::timestamp) AS data,
           "quantidade" AS q,
           CASE
             WHEN COALESCE("status_operacional", '') ILIKE '%aguardando exped%' THEN 'ag'
@@ -700,8 +686,8 @@ app.get('/api/outbound', async (req, res) => {
             ELSE 'fluxo'
           END AS grupo
         FROM "itens"
-        WHERE ${parseTs('importado_em')} >= $1::timestamp
-          AND ${parseTs('importado_em')} <= $2::timestamp
+        WHERE "importado_em"::timestamp >= $1::timestamp
+          AND "importado_em"::timestamp <= $2::timestamp
           AND COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
           ${filtroCanal}
       ) t
@@ -764,7 +750,6 @@ app.get('/api/outbound', async (req, res) => {
     }
 
     const imp = kpisImportados.rows[0] || {};
-    const st = kpisStatus.rows[0] || {};
     const prod = kpisProduzidos.rows[0] || {};
     const exp = kpisExpedidos.rows[0] || {};
 
@@ -773,12 +758,12 @@ app.get('/api/outbound', async (req, res) => {
       forecast_diario: forecastDiario,
       pecas_integradas: Number(imp.total_integradas || 0),
       pedidos_integradas: Number(imp.pedidos_integrados || 0),
-      pecas_fluxo: Number(st.total_fluxo || 0),
-      pedidos_fluxo: Number(st.pedidos_fluxo || 0),
-      em_coleta: Number(st.total_coleta || 0),
-      pedidos_coleta: Number(st.pedidos_coleta || 0),
-      em_tratativa: Number(st.total_tratativa || 0),
-      pedidos_tratativa: Number(st.pedidos_tratativa || 0),
+      pecas_fluxo: Number(imp.total_fluxo || 0),
+      pedidos_fluxo: Number(imp.pedidos_fluxo || 0),
+      em_coleta: Number(imp.total_coleta || 0),
+      pedidos_coleta: Number(imp.pedidos_coleta || 0),
+      em_tratativa: Number(imp.total_tratativa || 0),
+      pedidos_tratativa: Number(imp.pedidos_tratativa || 0),
       pecas_produzidas: Number(prod.total_produzidas || 0),
       pedidos_produzidas: Number(prod.pedidos_produzidos || 0),
       pecas_expedidas: Number(exp.total_expedidas || 0),
@@ -793,10 +778,10 @@ app.get('/api/outbound', async (req, res) => {
       ultima_atualizacao: await ultimaAtualizacao()
     };
 
-    await responderDireto(res, chaveOutbound, resposta,
+    await responderComCache(res, chaveOutbound, resposta,
       d => d.pecas_integradas === 0 && d.pecas_produzidas === 0 && d.pecas_expedidas === 0);
   } catch (err) {
-    await erroDireto(res, chaveOutbound, err, 'Erro no Outbound');
+    await erroComCache(res, chaveOutbound, err, 'Erro no Outbound');
   }
 });
 
@@ -1121,8 +1106,6 @@ app.get('/api/expedicao', async (req, res) => {
     const ini = dIni + ' 00:00:00';
     const fim = dFim + ' 23:59:59';
 
-    const parseTs = col => `NULLIF(TRIM("${col}"::text), '')::timestamp`;
-
     const k = await pool.query(`
       SELECT
         COUNT(DISTINCT NULLIF(${transp}, 'SEM TRANSPORTADORA')) AS transportadoras,
@@ -1133,7 +1116,7 @@ app.get('/api/expedicao', async (req, res) => {
       WHERE ${agCarreg} AND ${semCancelado}`);
 
     const td = await pool.query(`
-      SELECT DATE(COALESCE(${parseTs('conferido_em')}, ${parseTs('importado_em')})) AS data,
+      SELECT DATE(COALESCE(NULLIF("conferido_em"::text, ''), "importado_em"::text)::timestamp) AS data,
              ${transp} AS transportadora,
              COALESCE(SUM("quantidade"), 0) AS pecas
       FROM "itens"
@@ -1141,7 +1124,7 @@ app.get('/api/expedicao', async (req, res) => {
       GROUP BY 1, 2
       ORDER BY 1, 3 DESC`);
 
-    const periodo = `${parseTs('processado_em')} >= $1::timestamp AND ${parseTs('processado_em')} <= $2::timestamp AND ${semCancelado}`;
+    const periodo = `"processado_em"::timestamp >= $1::timestamp AND "processado_em"::timestamp <= $2::timestamp AND ${semCancelado}`;
 
     const em = await pool.query(`
       SELECT COALESCE(SUM("quantidade"), 0) AS pecas FROM "itens" WHERE ${periodo}`, [ini, fim]);
@@ -1151,8 +1134,8 @@ app.get('/api/expedicao', async (req, res) => {
       FROM "itens" WHERE ${periodo}
       GROUP BY 1 ORDER BY 2 DESC LIMIT 12`, [ini, fim]);
 
-    const procTs = parseTs('processado_em');
-    const impTs  = parseTs('importado_em');
+    const procTs = `NULLIF(TRIM("processado_em"::text), '')::timestamp`;
+    const impTs  = `NULLIF(TRIM("importado_em"::text), '')::timestamp`;
     const porDia = idExpr => `
       SELECT TO_CHAR(data, 'YYYY-MM-DD') AS data,
              COUNT(DISTINCT id) FILTER (WHERE tipo = 'exp') AS expedido,
