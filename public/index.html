@@ -8,32 +8,49 @@
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-    body { background-color: #0b0c10; color: #ffffff; padding: 12px; }
-    .tabs-nav { display: flex; gap: 8px; margin-bottom: 12px; }
-    .tab-btn { background: #1a1a1a; color: #888; border: 1px solid #333; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 13px; }
+    body { background-color: #0b0c10; color: #ffffff; padding: 8px 10px; }
+    /* ===== BARRA FINA NO TOPO (menu à esquerda, F11 à direita) ===== */
+    .topbar { display: flex; align-items: center; justify-content: space-between; height: 30px; margin-bottom: 6px; transition: opacity .3s; }
+    body.tela-cheia .topbar { opacity: .25; }
+    body.tela-cheia .topbar:hover { opacity: 1; }
+    .menu-btn { background: #1a1a1a; border: 1px solid #333; border-radius: 6px; width: 38px; height: 30px; cursor: pointer; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 4px; padding: 0; }
+    .menu-btn span { display: block; width: 18px; height: 2px; background: #ddd; border-radius: 2px; }
+    .menu-btn:hover { border-color: #45a29e; }
+
+    /* ===== MENU LATERAL (abas + apresentação) ===== */
+    .drawer-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.55); opacity: 0; pointer-events: none; transition: opacity .25s; z-index: 900; }
+    .drawer-backdrop.aberto { opacity: 1; pointer-events: auto; }
+    .drawer { position: fixed; top: 0; left: 0; bottom: 0; width: 270px; background: #101114; border-right: 1px solid #2a2a2a; transform: translateX(-100%); transition: transform .25s; z-index: 901; display: flex; flex-direction: column; padding: 14px; gap: 6px; overflow-y: auto; }
+    .drawer.aberto { transform: translateX(0); }
+    .drawer-title { font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 1px; margin: 4px 2px 6px; }
+    .tab-btn { background: #1a1a1a; color: #aaa; border: 1px solid #333; padding: 11px 14px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 14px; text-align: left; }
+    .tab-btn:hover { border-color: #45a29e; color: #fff; }
     .tab-btn.active { background: #45a29e; color: #000; border-color: #45a29e; }
+    .drawer-sep { height: 1px; background: #2a2a2a; margin: 10px 0 6px; }
     .tab-content { display: none; }
-    .tab-content.active { display: block; }
+    .tab-content.active { display: flex; flex-direction: column; height: calc(100vh - 54px); min-height: 640px; }
+    #tab-notas.active { height: auto; min-height: 0; display: block; }
+    .tab-content.active > .outbound-header, .tab-content.active > .top-kpis-grid, .tab-content.active > .header { flex: none; }
 
     /* ESTOQUE */
     .header { display: flex; justify-content: space-between; align-items: center; background: #000; border-radius: 8px; margin-bottom: 12px; border: 1px solid #222; padding: 12px 18px; }
     .header-title { font-size: 22px; font-weight: 800; letter-spacing: 2px; color: #fff; text-transform: uppercase; }
     .kpi-top-container { display: flex; gap: 8px; }
     .kpi-top { background: #1f2833; padding: 5px 12px; border-radius: 6px; text-align: center; border: 1px solid #45a29e; }
-    .kpi-top span { display: block; font-size: 9px; color: #c5c6c7; text-transform: uppercase; }
-    .kpi-top strong { font-size: 16px; color: #fff; }
-    .update-time { font-size: 10px; color: #888; text-align: right; margin-top: 3px; }
-    .grid-container { display: grid; grid-template-columns: 1fr 1fr 22%; grid-template-rows: minmax(0, 1fr); gap: 12px; height: calc(100vh - 185px); min-height: 620px; }
+    .kpi-top span { display: block; font-size: 11px; color: #c5c6c7; text-transform: uppercase; }
+    .kpi-top strong { font-size: 22px; color: #fff; }
+    .update-time { font-size: 12px; color: #888; text-align: right; margin-top: 3px; }
+    .grid-container { display: grid; grid-template-columns: 1fr 1fr 22%; grid-template-rows: minmax(0, 1fr); gap: 12px; flex: 1 1 0; min-height: 0; }
     .section-card { background: #121212; border-radius: 8px; padding: 12px; border: 1px solid #2a2a2a; display: flex; flex-direction: column; min-height: 0; }
-    .section-title { display: inline-block; background: #e0e0e0; color: #000; padding: 3px 14px; border-radius: 12px; font-weight: bold; font-size: 12px; margin-bottom: 10px; }
+    .section-title { display: inline-block; background: #e0e0e0; color: #000; padding: 3px 14px; border-radius: 12px; font-weight: bold; font-size: 14px; margin-bottom: 10px; }
     .kpi-row { display: flex; justify-content: space-between; text-align: center; margin-bottom: 8px; background: #1a1a1a; padding: 8px; border-radius: 6px; }
-    .kpi-item span { display: block; font-size: 10px; color: #aaa; }
-    .kpi-item strong { font-size: 16px; color: #fff; }
-    .pct-row { display: flex; justify-content: flex-end; gap: 12px; font-size: 10px; color: #45a29e; margin-bottom: 10px; }
+    .kpi-item span { display: block; font-size: 12px; color: #aaa; }
+    .kpi-item strong { font-size: 26px; color: #fff; }
+    .pct-row { display: flex; justify-content: flex-end; gap: 14px; font-size: 14px; color: #45a29e; margin-bottom: 10px; }
     .chart-box { background: #181818; border-radius: 8px; padding: 10px; border: 1px solid #282828; margin-top: 10px; flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
     .chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-    .chart-title-tag { background: #e0e0e0; color: #000; font-size: 10px; font-weight: bold; padding: 2px 8px; border-radius: 8px; }
-    .chart-legend { display: flex; gap: 10px; font-size: 10px; font-style: italic; }
+    .chart-title-tag { background: #e0e0e0; color: #000; font-size: 13px; font-weight: bold; padding: 2px 8px; border-radius: 8px; }
+    .chart-legend { display: flex; gap: 12px; font-size: 13px; font-style: italic; }
     .legend-item { display: flex; align-items: center; gap: 4px; }
     .color-box { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
     .color-purple { background-color: #B57EDC; }
@@ -45,24 +62,24 @@
     .outbound-header { display: flex; align-items: center; justify-content: space-between; background: #000; padding: 6px 12px; border-radius: 6px; margin-bottom: 8px; border: 1px solid #222; }
     .logos-box { display: flex; align-items: center; gap: 8px; }
     .header-kpis-group { display: flex; align-items: center; gap: 6px; }
-    .header-kpi-card { border: 1px solid #fff; padding: 4px 10px; border-radius: 4px; text-align: center; background: #000; min-width: 85px; }
-    .header-kpi-card span { font-size: 9px; display: block; color: #ccc; white-space: nowrap; }
-    .header-kpi-card strong { font-size: 15px; color: #fff; }
-    .main-title-outbound { font-size: 22px; font-weight: 900; letter-spacing: 2px; }
-    .date-filter-box { background: #1c1c1c; border: 1px solid #333; padding: 4px 10px; border-radius: 6px; display: flex; align-items: center; gap: 6px; font-size: 11px; color: #aaa; }
-    .date-input { background: #000; color: #fff; border: 1px solid #444; border-radius: 4px; padding: 3px 6px; font-size: 11px; outline: none; cursor: pointer; }
+    .header-kpi-card { border: 1px solid #fff; padding: 4px 12px; border-radius: 4px; text-align: center; background: #000; min-width: 100px; }
+    .header-kpi-card span { font-size: 11px; display: block; color: #ccc; white-space: nowrap; }
+    .header-kpi-card strong { font-size: 22px; color: #fff; }
+    .main-title-outbound { font-size: 28px; font-weight: 900; letter-spacing: 2px; }
+    .date-filter-box { background: #1c1c1c; border: 1px solid #333; padding: 5px 10px; border-radius: 6px; display: flex; align-items: center; gap: 6px; font-size: 13px; color: #aaa; }
+    .date-input { background: #000; color: #fff; border: 1px solid #444; border-radius: 4px; padding: 3px 6px; font-size: 13px; outline: none; cursor: pointer; }
     .date-input::-webkit-calendar-picker-indicator { filter: invert(1); cursor: pointer; }
     .top-kpis-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-bottom: 8px; }
-    .kpi-card-outbound { background: #181818; border: 1px solid #2a2a2a; border-radius: 6px; padding: 10px; height: 80px; display: flex; flex-direction: column; justify-content: space-between; }
-    .kpi-card-outbound .title { font-size: 12px; font-weight: bold; color: #e0e0e0; }
-    .kpi-card-outbound .value-main { font-size: 15px; font-weight: bold; color: #45a29e; }
-    .kpi-card-outbound .sub { font-size: 10px; color: #aaa; }
-    .outbound-body-grid { display: grid; grid-template-columns: 1fr 300px; grid-template-rows: minmax(0, 1fr); gap: 8px; height: calc(100vh - 266px); min-height: 560px; }
+    .kpi-card-outbound { background: #181818; border: 1px solid #2a2a2a; border-radius: 6px; padding: 10px 12px; min-height: 104px; display: flex; flex-direction: column; justify-content: space-between; }
+    .kpi-card-outbound .title { font-size: 15px; font-weight: bold; color: #e0e0e0; }
+    .kpi-card-outbound .value-main { font-size: 32px; font-weight: bold; color: #45a29e; }
+    .kpi-card-outbound .sub { font-size: 13px; color: #aaa; }
+    .outbound-body-grid { display: grid; grid-template-columns: 1fr 300px; grid-template-rows: minmax(0, 1fr); gap: 8px; flex: 1 1 0; min-height: 0; }
     .center-charts { display: flex; flex-direction: column; gap: 8px; height: 100%; min-height: 0; }
     .chart-panel { background: #181818; border: 1px solid #2a2a2a; border-radius: 6px; padding: 8px; flex: 1 1 0; min-height: 0; position: relative; }
-    .chart-panel-tag { position: absolute; top: 8px; left: 8px; background: #eaeaea; color: #000; font-size: 10px; font-weight: bold; padding: 2px 8px; border-radius: 10px; z-index: 2; }
+    .chart-panel-tag { position: absolute; top: 8px; left: 8px; background: #eaeaea; color: #000; font-size: 13px; font-weight: bold; padding: 2px 8px; border-radius: 10px; z-index: 2; }
     .right-chart { background: #181818; border: 1px solid #2a2a2a; border-radius: 6px; padding: 8px; position: relative; height: 100%; min-height: 0; }
-    .chart-container-outbound { position: relative; height: 100%; width: 100%; padding-top: 22px; }
+    .chart-container-outbound { position: relative; height: 100%; width: 100%; padding-top: 30px; }
 
     /* LOGOS */
     .logo-box-img { border-radius: 6px; padding: 6px 14px; display: flex; align-items: center; }
@@ -70,12 +87,12 @@
     .logo-box-img.ftd { background: #1f2023; }
     .logo-box-img img { height: 40px; width: auto; display: block; }
     .top-kpis-grid.cinco { grid-template-columns: repeat(5, 1fr); }
-    .top-kpis-grid.cinco .value-main { font-size: 24px; }
+    .top-kpis-grid.cinco .value-main { font-size: 44px; }
     .col-direita { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
     .col-direita .section-card { flex: 1 1 0; }
     .col-direita .chart-header { margin-bottom: 6px; }
 
-    .outbound-header { padding: 0 14px 0 0; overflow: hidden; min-height: 76px; }
+    .outbound-header { padding: 0 14px 0 0; overflow: hidden; min-height: 80px; }
     .outbound-header .logos-box { align-self: stretch; gap: 0; }
     .outbound-header .logo-box-img { border-radius: 0; padding: 0 22px; align-self: stretch; }
     .outbound-header .logo-box-img img { height: 54px; }
@@ -83,32 +100,29 @@
     .outbound-header .update-time { margin-left: 16px !important; }
 
     .top-kpis-grid.quatro { grid-template-columns: repeat(4, 1fr); }
-    .top-kpis-grid.quatro .kpi-card-outbound { height: 96px; align-items: center; justify-content: center; text-align: center; gap: 6px; }
-    .top-kpis-grid.quatro .title { font-size: 15px; }
-    .top-kpis-grid.quatro .value-main { font-size: 36px; color: #fff; font-weight: 500; }
+    .top-kpis-grid.quatro .kpi-card-outbound { min-height: 120px; align-items: center; justify-content: center; text-align: center; gap: 6px; }
+    .top-kpis-grid.quatro .title { font-size: 18px; }
+    .top-kpis-grid.quatro .value-main { font-size: 52px; color: #fff; font-weight: 500; }
     .sub-row { display: flex; gap: 8px; flex: 1 1 0; min-height: 0; }
     .sub-row .chart-panel { flex: 1 1 0; }
     .sub-row .chart-panel:first-child { flex: 0.7 1 0; }
     .right-stack { display: flex; flex-direction: column; gap: 8px; height: 100%; min-height: 0; }
     .right-stack .chart-panel { flex: 1 1 0; }
 
-    .tabs-nav { flex-wrap: wrap; align-items: center; }
-    .apresentacao { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 11px; color: #888; transition: opacity .3s; }
-    .apresentacao select, .ctrl-btn { background: #1a1a1a; color: #ddd; border: 1px solid #333; border-radius: 6px; padding: 7px 10px; font-size: 12px; cursor: pointer; outline: none; }
+    .apresentacao { display: flex; flex-direction: column; gap: 8px; font-size: 12px; color: #888; }
+    .apresentacao select, .ctrl-btn { background: #1a1a1a; color: #ddd; border: 1px solid #333; border-radius: 6px; padding: 9px 10px; font-size: 13px; cursor: pointer; outline: none; }
     .ctrl-btn:hover, .apresentacao select:hover { border-color: #45a29e; }
     .ctrl-btn.ativo { background: #45a29e; color: #000; border-color: #45a29e; font-weight: bold; }
-    body.tela-cheia .apresentacao { opacity: .2; }
-    body.tela-cheia .apresentacao:hover { opacity: 1; }
 
     .nf-kpis { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
     .nf-kpi { background: #181818; border: 1px solid #2a2a2a; border-radius: 6px; padding: 10px 16px; min-width: 150px; }
     .nf-kpi span { display: block; font-size: 11px; color: #aaa; }
-    .nf-kpi strong { font-size: 20px; color: #45a29e; }
+    .nf-kpi strong { font-size: 26px; color: #45a29e; }
     .nf-grid { display: grid; grid-template-columns: 380px 1fr; gap: 8px; align-items: start; }
     .nf-left { display: flex; flex-direction: column; gap: 8px; }
     .nf-panel { background: #181818; border: 1px solid #2a2a2a; border-radius: 6px; padding: 10px; }
     .nf-scroll { max-height: 620px; overflow: auto; }
-    .nf-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .nf-table { width: 100%; border-collapse: collapse; font-size: 14px; }
     .nf-table th { position: sticky; top: 0; background: #222; color: #fff; text-align: left; padding: 6px 8px; }
     .nf-table td { padding: 5px 8px; border-bottom: 1px solid #262626; }
     .nf-search { background: #000; color: #fff; border: 1px solid #444; border-radius: 4px; padding: 5px 8px; font-size: 12px; margin-bottom: 8px; width: 250px; }
@@ -116,20 +130,32 @@
 </head>
 <body>
 
-  <div class="tabs-nav">
-    <button class="tab-btn active" data-tab="recebimento" onclick="switchTab('recebimento', true)">Recebimento</button>
-    <button class="tab-btn" data-tab="devolucao" onclick="switchTab('devolucao', true)">Devolução</button>
-    <button class="tab-btn" data-tab="estoque" onclick="switchTab('estoque', true)">Estoque</button>
-    <button class="tab-btn" data-tab="outbound" onclick="switchTab('outbound', true)">Outbound - Geral</button>
-    <button class="tab-btn" data-tab="b2b" onclick="switchTab('b2b', true)">B2B</button>
-    <button class="tab-btn" data-tab="b2c" onclick="switchTab('b2c', true)">B2C</button>
-    <button class="tab-btn" data-tab="transferencia" onclick="switchTab('transferencia', true)">Transferência</button>
-    <button class="tab-btn" data-tab="prefeitura" onclick="switchTab('prefeitura', true)">Prefeitura</button>
-    <button class="tab-btn" data-tab="expedicao" onclick="switchTab('expedicao', true)">Outbound - Expedição</button>
-    <button class="tab-btn" data-tab="notas" onclick="switchTab('notas', true)">Resumo de NF</button>
+  <!-- BARRA DO TOPO: menu (3 linhas) à esquerda, F11 à direita -->
+  <div class="topbar">
+    <button class="menu-btn" onclick="alternarMenu()" title="Menu de abas" aria-label="Abrir menu">
+      <span></span><span></span><span></span>
+    </button>
+    <button id="btn-tela" class="ctrl-btn" onclick="alternarTelaCheia()">⛶ Tela cheia (F11)</button>
+  </div>
 
+  <!-- MENU LATERAL: abas + troca automática -->
+  <div id="drawer-backdrop" class="drawer-backdrop" onclick="fecharMenu()"></div>
+  <div id="drawer" class="drawer">
+    <div class="drawer-title">Abas</div>
+    <button class="tab-btn active" data-tab="recebimento" onclick="switchTab('recebimento', true); fecharMenu()">Recebimento</button>
+    <button class="tab-btn" data-tab="devolucao" onclick="switchTab('devolucao', true); fecharMenu()">Devolução</button>
+    <button class="tab-btn" data-tab="estoque" onclick="switchTab('estoque', true); fecharMenu()">Estoque</button>
+    <button class="tab-btn" data-tab="outbound" onclick="switchTab('outbound', true); fecharMenu()">Outbound - Geral</button>
+    <button class="tab-btn" data-tab="b2b" onclick="switchTab('b2b', true); fecharMenu()">B2B</button>
+    <button class="tab-btn" data-tab="b2c" onclick="switchTab('b2c', true); fecharMenu()">B2C</button>
+    <button class="tab-btn" data-tab="transferencia" onclick="switchTab('transferencia', true); fecharMenu()">Transferência</button>
+    <button class="tab-btn" data-tab="prefeitura" onclick="switchTab('prefeitura', true); fecharMenu()">Prefeitura</button>
+    <button class="tab-btn" data-tab="expedicao" onclick="switchTab('expedicao', true); fecharMenu()">Outbound - Expedição</button>
+    <button class="tab-btn" data-tab="notas" onclick="switchTab('notas', true); fecharMenu()">Resumo de NF</button>
+
+    <div class="drawer-sep"></div>
+    <div class="drawer-title">Passar de aba automaticamente</div>
     <div class="apresentacao" title="Modo apresentação">
-      <span>Trocar de aba:</span>
       <select id="sel-intervalo" onchange="definirApresentacao(Number(this.value))">
         <option value="0">Pausado</option>
         <option value="5">A cada 5 s</option>
@@ -138,7 +164,6 @@
         <option value="30">A cada 30 s</option>
       </select>
       <button id="btn-play" class="ctrl-btn" onclick="alternarApresentacao()">▶ Iniciar</button>
-      <button id="btn-tela" class="ctrl-btn" onclick="alternarTelaCheia()">⛶ Tela cheia (F11)</button>
     </div>
   </div>
 
@@ -370,7 +395,7 @@
             <input type="date" class="date-input date-ini" onchange="aoMudarData()">
             <span>até</span>
             <input type="date" class="date-input date-fim" onchange="aoMudarData()">
-            <button class="ctrl-btn" style="padding:3px 8px" title="Voltar ao período padrão (mês passado até o fim deste mês)" onclick="restaurarDataPadrao()">↺</button>
+            <button class="ctrl-btn" style="padding:3px 8px" title="Voltar ao período padrão (dia 1 do mês até hoje)" onclick="restaurarDataPadrao()">↺</button>
           </div>
         </div>
 
@@ -417,7 +442,7 @@
             <input type="date" class="date-input date-ini" onchange="aoMudarData()">
             <span>até</span>
             <input type="date" class="date-input date-fim" onchange="aoMudarData()">
-            <button class="ctrl-btn" style="padding:3px 8px" title="Voltar ao período padrão (mês passado até o fim deste mês)" onclick="restaurarDataPadrao()">↺</button>
+            <button class="ctrl-btn" style="padding:3px 8px" title="Voltar ao período padrão (dia 1 do mês até hoje)" onclick="restaurarDataPadrao()">↺</button>
           </div>
         </div>
 
@@ -471,7 +496,7 @@
             <input type="date" class="date-input date-ini" onchange="aoMudarData()">
             <span>até</span>
             <input type="date" class="date-input date-fim" onchange="aoMudarData()">
-            <button class="ctrl-btn" style="padding:3px 8px" title="Voltar ao período padrão (mês passado até o fim deste mês)" onclick="restaurarDataPadrao()">↺</button>
+            <button class="ctrl-btn" style="padding:3px 8px" title="Voltar ao período padrão (dia 1 do mês até hoje)" onclick="restaurarDataPadrao()">↺</button>
           </div>
         </div>
 
@@ -498,16 +523,29 @@
         </div>`;
     }
 
+    const isoData = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    let periodoFixado = false;
+
+    // Padrão: do dia 1 do mês atual até o dia de hoje
     function periodoPadrao() {
       const hoje = new Date();
-      const ini = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
-      const fim = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0);
-      const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      return { ini: iso(ini), fim: iso(fim) };
+      const ini = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+      return { ini: isoData(ini), fim: isoData(hoje) };
+    }
+
+    // Se ninguém escolheu uma data manualmente, acompanha a virada do dia/mês (útil em TV ligada direto)
+    function atualizarPeriodoPadrao() {
+      if (periodoFixado) return;
+      const p = periodoPadrao();
+      if (p.ini === dataInicio && p.fim === dataFim) return;
+      dataInicio = p.ini; dataFim = p.fim;
+      document.querySelectorAll('.date-ini').forEach(i => i.value = dataInicio);
+      document.querySelectorAll('.date-fim').forEach(i => i.value = dataFim);
     }
 
     function restaurarDataPadrao() {
       try { localStorage.removeItem('dash_periodo'); } catch (e) {}
+      periodoFixado = false;
       const p = periodoPadrao();
       dataInicio = p.ini; dataFim = p.fim;
       document.querySelectorAll('.date-ini').forEach(i => i.value = dataInicio);
@@ -520,10 +558,12 @@
       let fixado = null;
       try { fixado = JSON.parse(localStorage.getItem('dash_periodo') || 'null'); } catch (e) {}
       const ok = d => /^\d{4}-\d{2}-\d{2}$/.test(String(d || ''));
-      if (fixado && ok(fixado.ini) && ok(fixado.fim) && fixado.ini <= fixado.fim) {
-        dataInicio = fixado.ini; dataFim = fixado.fim;
+      // uma data escolhida manualmente só vale no próprio dia; no dia seguinte volta ao padrão
+      if (fixado && fixado.dia === isoData(new Date()) && ok(fixado.ini) && ok(fixado.fim) && fixado.ini <= fixado.fim) {
+        dataInicio = fixado.ini; dataFim = fixado.fim; periodoFixado = true;
       } else {
-        dataInicio = padrao.ini; dataFim = padrao.fim;
+        dataInicio = padrao.ini; dataFim = padrao.fim; periodoFixado = false;
+        try { localStorage.removeItem('dash_periodo'); } catch (e) {}
       }
 
       OUTBOUND_TABS.forEach(cfg => {
@@ -544,13 +584,15 @@
       if (!ini || !fim || !ini.value || !fim.value) return;
       dataInicio = ini.value;
       dataFim = fim.value;
-      try { localStorage.setItem('dash_periodo', JSON.stringify({ ini: dataInicio, fim: dataFim })); } catch (e) {}
+      periodoFixado = true;
+      try { localStorage.setItem('dash_periodo', JSON.stringify({ ini: dataInicio, fim: dataFim, dia: isoData(new Date()) })); } catch (e) {}
       document.querySelectorAll('.date-ini').forEach(i => i.value = dataInicio);
       document.querySelectorAll('.date-fim').forEach(i => i.value = dataFim);
       carregarAbaAtiva();
     }
 
     function carregarAbaAtiva() {
+      atualizarPeriodoPadrao();
       const ativa = document.querySelector('.tab-content.active');
       if (!ativa) return;
       const key = ativa.id.replace('tab-', '');
@@ -571,6 +613,15 @@
       document.getElementById('tab-' + tabName).classList.add('active');
       carregarAbaAtiva();
       if (manual && intervaloAtual > 0) agendarApresentacao();
+    }
+
+    function alternarMenu() {
+      document.getElementById('drawer').classList.toggle('aberto');
+      document.getElementById('drawer-backdrop').classList.toggle('aberto');
+    }
+    function fecharMenu() {
+      document.getElementById('drawer').classList.remove('aberto');
+      document.getElementById('drawer-backdrop').classList.remove('aberto');
     }
 
     let intervaloAtual = 0;
@@ -636,6 +687,7 @@
 
       document.addEventListener('keydown', e => {
         if (e.key === 'F11') { e.preventDefault(); alternarTelaCheia(); }
+        if (e.key === 'Escape') fecharMenu();
       });
       document.addEventListener('fullscreenchange', atualizarModoTela);
       window.addEventListener('resize', atualizarModoTela);
@@ -668,11 +720,11 @@
           layout: { padding: { top: 22 } },
           plugins: {
             legend: { display: false },
-            datalabels: { clip: false, font: { weight: 'bold', size: 14 }, formatter: rotulo }
+            datalabels: { clip: false, font: { weight: 'bold', size: 17 }, formatter: rotulo }
           },
           scales: {
-            x: { stacked: true, ticks: { color: '#FFFFFF', font: { weight: 'bold', size: 14 } }, grid: { display: false } },
-            y: { stacked: true, beginAtZero: true, grace: '10%', ticks: { color: '#888888', font: { size: 14 } }, grid: { color: '#222222' } }
+            x: { stacked: true, ticks: { color: '#FFFFFF', font: { weight: 'bold', size: 16 } }, grid: { display: false } },
+            y: { stacked: true, beginAtZero: true, grace: '10%', ticks: { color: '#888888', font: { size: 16 } }, grid: { color: '#222222' } }
           }
         }
       });
@@ -710,11 +762,11 @@
           layout: { padding: { right: 8 } },
           plugins: {
             legend: { display: false },
-            datalabels: { color: '#fff', anchor: 'end', align: 'end', clip: false, font: { weight: 'bold', size: 14 }, formatter: v => v > 0 ? fmt(v) : '' }
+            datalabels: { color: '#fff', anchor: 'end', align: 'end', clip: false, font: { weight: 'bold', size: 17 }, formatter: v => v > 0 ? fmt(v) : '' }
           },
           scales: {
             x: { display: false, beginAtZero: true, grace: '18%' },
-            y: { ticks: { color: '#ddd', font: { size: 13, weight: 'bold' } }, grid: { display: false }, border: { color: '#888' } }
+            y: { ticks: { color: '#ddd', font: { size: 15, weight: 'bold' } }, grid: { display: false }, border: { color: '#888' } }
           }
         }
       });
@@ -899,12 +951,12 @@
           maintainAspectRatio: false,
           layout: { padding: { top: (datas.length * transps.length) > 14 ? 56 : 22, right: 10 } },
           plugins: {
-            legend: { display: true, position: 'top', align: 'start', labels: { color: '#ddd', boxWidth: 22, boxHeight: 10, font: { size: 14 } } },
-            datalabels: { color: '#fff', anchor: 'end', align: 'top', clip: false, rotation: (datas.length * transps.length) > 14 ? -90 : 0, font: { weight: 'bold', size: 14 }, formatter: v => v > 0 ? fmt(v) : '' }
+            legend: { display: true, position: 'top', align: 'start', labels: { color: '#ddd', boxWidth: 22, boxHeight: 10, font: { size: 16 } } },
+            datalabels: { color: '#fff', anchor: 'end', align: 'top', clip: false, rotation: (datas.length * transps.length) > 14 ? -90 : 0, font: { weight: 'bold', size: 16 }, formatter: v => v > 0 ? fmt(v) : '' }
           },
           scales: {
-            x: { ticks: { color: '#ddd', font: { size: 14 } }, grid: { display: false } },
-            y: { beginAtZero: true, grace: '15%', ticks: { color: '#888', font: { size: 14 } }, grid: { color: '#222' } }
+            x: { ticks: { color: '#ddd', font: { size: 16 } }, grid: { display: false } },
+            y: { beginAtZero: true, grace: '15%', ticks: { color: '#888', font: { size: 16 } }, grid: { color: '#222' } }
           }
         }
       });
@@ -983,7 +1035,7 @@
           maintainAspectRatio: false,
           layout: { padding: { top: labels.length > 18 ? 56 : 6, right: 10 } },
           plugins: {
-            legend: { display: true, position: 'top', align: 'end', labels: { color: '#aaa', boxWidth: 16, boxHeight: 8, font: { size: 14 } } },
+            legend: { display: true, position: 'top', align: 'end', labels: { color: '#aaa', boxWidth: 16, boxHeight: 8, font: { size: 16 } } },
             datalabels: {
               color: '#fff',
               anchor: 'end',
@@ -991,14 +1043,14 @@
               offset: 2,
               rotation: labels.length > 18 ? -90 : 0,
               clip: false,
-              font: { weight: 'bold', size: 14 },
+              font: { weight: 'bold', size: 16 },
               formatter: val => val > 0 ? fmt(val) : ''
             }
           },
           scales: {
-            x: { offset: true, ticks: { color: '#aaa', font: { size: 14 } }, grid: { display: false } },
-            y: { beginAtZero: true, grace: '15%', ticks: { color: '#888', font: { size: 14 } }, grid: { color: '#222' } },
-            y1: { beginAtZero: true, grace: '15%', position: 'right', ticks: { color: '#F59E0B', font: { size: 14 } }, grid: { display: false } }
+            x: { offset: true, ticks: { color: '#ccc', font: { size: 16 } }, grid: { display: false } },
+            y: { beginAtZero: true, grace: '15%', ticks: { color: '#888', font: { size: 16 } }, grid: { color: '#222' } },
+            y1: { beginAtZero: true, grace: '15%', position: 'right', ticks: { color: '#F59E0B', font: { size: 16 } }, grid: { display: false } }
           }
         }
       });
@@ -1048,14 +1100,14 @@
           maintainAspectRatio: false,
           layout: { padding: { right: 6 } },
           plugins: {
-            legend: { display: true, position: 'top', labels: { color: '#fff', boxWidth: 34, boxHeight: 12, font: { size: 14, weight: 'bold' } } },
+            legend: { display: true, position: 'top', labels: { color: '#fff', boxWidth: 34, boxHeight: 12, font: { size: 17, weight: 'bold' } } },
             tooltip: { callbacks: { label: c => `${c.dataset.label}: ${fmt(c.dataset.raw[c.dataIndex])}${cfg === SERIES_STATUS_EXPEDICAO ? '' : ' peças'}` } },
             datalabels: {
               color: '#fff',
               anchor: 'end',
               align: 'start',
               clip: true,
-              font: { weight: 'bold', size: 13 },
+              font: { weight: 'bold', size: 16 },
               formatter: (v, c) => {
                 const raw = c.dataset.raw[c.dataIndex];
                 return raw > 0 && v >= 3 ? fmt(raw) : '';
@@ -1063,8 +1115,8 @@
             }
           },
           scales: {
-            x: { stacked: true, min: 0, max: 100, ticks: { color: '#aaa', font: { size: 13 }, callback: v => v + '%' }, grid: { color: '#222' } },
-            y: { stacked: true, ticks: { color: '#fff', font: { size: 13, weight: 'bold' } }, grid: { display: false } }
+            x: { stacked: true, min: 0, max: 100, ticks: { color: '#aaa', font: { size: 15 }, callback: v => v + '%' }, grid: { color: '#222' } },
+            y: { stacked: true, ticks: { color: '#fff', font: { size: 16, weight: 'bold' } }, grid: { display: false } }
           }
         }
       });
@@ -1149,7 +1201,7 @@
                 boxWidth: 12, 
                 boxHeight: 12,
                 padding: 2,
-                font: { size: 13, weight: 'bold' },
+                font: { size: 16, weight: 'bold' },
                 generateLabels: legendaSimples 
               } 
             },
@@ -1159,17 +1211,17 @@
               align: 'top', 
               offset: 4,
               clip: false, 
-              font: { weight: 'bold', size: 11 }, 
+              font: { weight: 'bold', size: 15 }, 
               rotation: labels.length > 18 ? -90 : 0, 
               formatter: val => val > 0 ? fmt(val) : '' 
             }
           },
           scales: {
-            x: { ticks: { color: '#aaa', font: { size: 11 } }, grid: { display: false } },
+            x: { ticks: { color: '#ccc', font: { size: 14, weight: 'bold' } }, grid: { display: false } },
             y: { 
               beginAtZero: true, 
-              grace: '20%', 
-              ticks: { color: '#888', font: { size: 11 } }, 
+              grace: '25%', 
+              ticks: { color: '#999', font: { size: 14 } }, 
               grid: { color: '#222' } 
             }
           }
