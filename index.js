@@ -381,6 +381,21 @@ app.get('/api/dashboard', async (req, res) => {
             ORDER BY pecas DESC
             LIMIT 12`);
           depositos = dp.rows.map(r => ({ area: r.area, pecas: Number(r.pecas) }));
+          diag.depositos_conta_todos_estados = true;
+
+          // Diagnóstico: soma de peças por estado (aparece em /api/dashboard > diagnostico)
+          if (info.colEstado) {
+            try {
+              const pe = await pool.query(`
+                SELECT COALESCE(NULLIF(UPPER(TRIM(${aspas(info.colEstado)}::text)), ''), 'SEM ESTADO') AS estado,
+                       COUNT(*) AS linhas,
+                       COALESCE(SUM(${qtd}) FILTER (WHERE ${qtd} > 0), 0) AS pecas
+                FROM "estoque"
+                GROUP BY 1
+                ORDER BY pecas DESC`);
+              diag.estoque_por_estado = pe.rows.map(r => ({ estado: r.estado, linhas: Number(r.linhas), pecas: Number(r.pecas) }));
+            } catch (e) { diag.estoque_por_estado_erro = e.message; }
+          }
         }
       }
     } catch (e) {
