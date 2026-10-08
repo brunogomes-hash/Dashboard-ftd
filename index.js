@@ -7,13 +7,10 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ===== CONEXÃO COM O DATABASE (URL do Supabase ou Neon) =====
-// O pg novo trata sslmode=require (que vem na URL do Neon/Supabase) como verify-full e
-// IGNORA o ssl: { rejectUnauthorized: false } abaixo -> erro SELF_SIGNED_CERT_IN_CHAIN.
-// Por isso removemos os parâmetros de SSL da URL e deixamos só a opção ssl do código.
 function urlSemSsl(url) {
   try {
     const u = new URL(url);
-    ['sslmode', 'sslrootcert', 'sslcert', 'sslkey', 'uselibpqcompat'].forEach(p => u.searchParams.delete(p));
+    ['sslmode', 'sslrootcert', 'sslkey', 'uselibpqcompat'].forEach(p => u.searchParams.delete(p));
     return u.toString();
   } catch (e) {
     return url;
@@ -26,7 +23,7 @@ const pool = new Pool({
 });
 pool.on('error', e => console.error('Erro no pool do banco:', e.message));
 
-// ===== NUNCA DEixar O NAVEGADOR/PROXY GUARDAR RESPOSTA DA API =====
+// ===== NUNCA DEIXAR O NAVEGADOR/PROXY GUARDAR RESPOSTA DA API =====
 app.use('/api', (req, res, next) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
   res.set('Pragma', 'no-cache');
@@ -34,7 +31,7 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
-// ===== ÚLTIMA ATUALIZAÇÃO (vem da tabela entrada_consolidada, coluna "última_atualização") =====
+// ===== ÚLTIMA ATUALIZAÇÃO =====
 const FUSO = 'America/Sao_Paulo';
 const agoraBR = () => new Date().toLocaleString('pt-BR', { timeZone: FUSO });
 
@@ -122,7 +119,6 @@ async function lerCache(chave) {
   return null;
 }
 
-// Monta a resposta "antiga" deixando CLARO que é cache, desde quando e por quê
 function comoAnterior(anterior, motivo, detalhe) {
   const extra = { dados_anteriores: true, cache_hora: anterior.hora, cache_motivo: motivo };
   if (detalhe) extra.cache_erro = detalhe;
@@ -146,7 +142,6 @@ async function erroComCache(res, chave, err, titulo) {
   console.error(`[${chave}] ${titulo}:`, err);
   const anterior = await lerCache(chave);
   if (anterior) {
-    // devolve o último dado bom, mas agora informando o erro real (aparece em /api/... e no log do Render)
     return res.json(comoAnterior(anterior, 'erro_na_consulta', err.message));
   }
   return res.status(500).json({ error: titulo, detalhe: err.message });
@@ -156,7 +151,7 @@ async function erroComCache(res, chave, err, titulo) {
 const contagensTabela = {};
 const encolhidaDesde = {};
 const LIMITE_ENCOLHEU = 0.5;
-const MAX_RECARGA_MS = 10 * 60 * 1000; // se ficar "pequena" por mais de 10 min, assume que é o novo normal
+const MAX_RECARGA_MS = 10 * 60 * 1000;
 
 async function tabelaEmRecarga(tabela) {
   try {
@@ -170,7 +165,6 @@ async function tabelaEmRecarga(tabela) {
       if (n > 0) {
         const desde = encolhidaDesde[tabela] || (encolhidaDesde[tabela] = Date.now());
         if (Date.now() - desde > MAX_RECARGA_MS) {
-          // não é recarga: a tabela realmente ficou menor. Atualiza a referência para não travar no cache antigo.
           contagensTabela[tabela] = n;
           delete encolhidaDesde[tabela];
           return false;
@@ -183,7 +177,6 @@ async function tabelaEmRecarga(tabela) {
     contagensTabela[tabela] = n;
     return false;
   } catch (e) {
-    // se não deu para contar, deixa a rota tentar (se falhar, o erro aparece de verdade)
     console.error(`Aviso: não foi possível contar "${tabela}":`, e.message);
     return false;
   }
@@ -212,7 +205,6 @@ const pastaSite = fs.existsSync(path.join(__dirname, 'public', 'index.html'))
 app.use(express.static(pastaSite));
 app.get('/', (req, res) => res.sendFile(path.join(pastaSite, 'index.html')));
 
-// ===== DIAGNÓSTICO: mostra o que está em cache e o que o detector de recarga enxerga =====
 app.get('/api/status-cache', (req, res) => {
   res.json({
     agora: agoraBR(),
@@ -222,7 +214,7 @@ app.get('/api/status-cache', (req, res) => {
   });
 });
 
-// ===== HELPERS E DETECCÇÃO DE COLUNAS =====
+// ===== HELPERS E DETECÇÃO DE COLUNAS =====
 const normNome = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 const aspas = nome => '"' + String(nome).replace(/"/g, '""') + '"';
 const BLOCOS_ESTOQUE = ['PP', 'PR', 'PQ', 'SP'];
@@ -519,24 +511,6 @@ const MAPA_CANAL = {
   prefeitura:    { re: 'prefeitura',   col: 'prefeitura_total' }
 };
 
-
-// ===== LEITURA SEGURA DE DATAS (texto ISO, DD/MM/AAAA com ou sem hora, vazio, timestamp) =====
-function dtSql(col) {
-  const c = `TRIM("${col}"::text)`;
-  return `(CASE
-    WHEN NULLIF(${c}, '') IS NULL THEN NULL
-    WHEN ${c} ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}' THEN ${c}::timestamp
-    WHEN ${c} ~ '^[0-9]{2}/[0-9]{2}/[0-9]{4}'
-      THEN (to_date(substr(${c}, 1, 10), 'DD/MM/YYYY')
-            + COALESCE(NULLIF(TRIM(substr(${c}, 12, 8)), '')::time, TIME '00:00:00'))::timestamp
-    ELSE NULL
-  END)`;
-}
-
-
-// ===== COLUNAS DE DATA NO FORMATO AAAAMMDD (ex.: "20260901" ou "20260901.0") =====
-// Pega só os 8 primeiros dígitos como TEXTO e compara como texto: não existe cast de data,
-// então uma linha estranha (vazia, "nan", etc.) nunca derruba a consulta inteira.
 function dia8(col) {
   return `SUBSTRING(TRIM("${col}"::text) FROM '^([0-9]{8})')`;
 }
@@ -576,7 +550,6 @@ app.get('/api/outbound', async (req, res) => {
     const dIni8 = dtInicio.slice(0, 10).replace(/-/g, '');
     const dFim8 = dtFim.slice(0, 10).replace(/-/g, '');
 
-    // A tabela "itens" pode não ter a coluna "modalidade": só filtra por ela se existir (senão dá erro e cai no cache antigo)
     let filtroCanal = '';
     if (canalRe) {
       const infoCanal = await detectarColunasItens();
@@ -586,7 +559,6 @@ app.get('/api/outbound', async (req, res) => {
         : `AND TRIM("canal"::text) ILIKE '%${canalRe}%'`;
     }
 
-    // Integradas: depende do período filtrado
     const kpisImportados = await pool.query(`
       SELECT 
         COALESCE(SUM("quantidade"), 0) AS total_integradas,
@@ -598,7 +570,6 @@ app.get('/api/outbound', async (req, res) => {
         ${filtroCanal}
     `, [dIni8, dFim8]);
 
-    // Em Fluxo / Em Coleta / Em Tratativa: FOTO ATUAL (sem filtro de data), igual ao Resumo de NF
     const kpisStatus = await pool.query(`
       SELECT
         COALESCE(SUM(CASE WHEN "status_operacional" ILIKE '%importado%'
@@ -692,17 +663,23 @@ app.get('/api/outbound', async (req, res) => {
       ORDER BY 1 ASC
     `, [dIni8, dFim8]);
 
+    // ===== AJUSTE PRINCIPAL: Separação de Em Tratativa no Gráfico Lateral =====
     const graficoStatus = await pool.query(`
       SELECT
         t.data,
-        COALESCE(SUM(CASE WHEN t.grupo = 'exp'   THEN t.q END), 0) AS expedido,
-        COALESCE(SUM(CASE WHEN t.grupo = 'ag'    THEN t.q END), 0) AS ag_exp,
-        COALESCE(SUM(CASE WHEN t.grupo = 'fluxo' THEN t.q END), 0) AS em_fluxo
+        COALESCE(SUM(CASE WHEN t.grupo = 'exp'       THEN t.q END), 0) AS expedido,
+        COALESCE(SUM(CASE WHEN t.grupo = 'ag'        THEN t.q END), 0) AS ag_exp,
+        COALESCE(SUM(CASE WHEN t.grupo = 'fluxo'     THEN t.q END), 0) AS em_fluxo,
+        COALESCE(SUM(CASE WHEN t.grupo = 'tratativa' THEN t.q END), 0) AS em_tratativa
       FROM (
         SELECT
           ${dia8ISO(dImp)} AS data,
           "quantidade" AS q,
           CASE
+            WHEN COALESCE("status_da_nota_fiscal", '') ILIKE '%RETEN%'
+              OR COALESCE("status_operacional", '') ILIKE '%RETEN%'
+              OR COALESCE("status_operacional", '') ILIKE '%TRATATIVA%'
+              OR COALESCE("status_operacional", '') ILIKE '%corte%' THEN 'tratativa'
             WHEN COALESCE("status_operacional", '') ILIKE '%aguardando exped%' THEN 'ag'
             WHEN COALESCE("status_operacional", '') ILIKE '%expedido%' THEN 'exp'
             ELSE 'fluxo'
@@ -1200,60 +1177,6 @@ app.get('/api/expedicao', async (req, res) => {
   } catch (err) {
     await erroComCache(res, chave, err, 'Erro Expedição');
   }
-});
-
-
-// ===== DIAGNÓSTICO DA TABELA ITENS (abra /api/diagnostico-itens no navegador) =====
-// Se existir a variável DIAG_TOKEN no Render, é obrigatório usar ?token=SEU_TOKEN
-app.get('/api/diagnostico-itens', async (req, res) => {
-  if (process.env.DIAG_TOKEN && req.query.token !== process.env.DIAG_TOKEN) {
-    return res.status(403).json({ error: 'token inválido' });
-  }
-  const out = {};
-  const rodar = async (nome, fn) => {
-    try { out[nome] = await fn(); } catch (e) { out[nome] = { erro: e.message }; }
-  };
-
-  await rodar('colunas', async () =>
-    (await pool.query(`SELECT column_name, data_type FROM information_schema.columns
-                       WHERE table_name = 'itens' ORDER BY ordinal_position`)).rows);
-
-  await rodar('total_e_preenchimento', async () =>
-    (await pool.query(`
-      SELECT COUNT(*)::int AS total,
-             COUNT(NULLIF(TRIM("importado_em"::text), ''))::int  AS com_importado,
-             COUNT(NULLIF(TRIM("conferido_em"::text), ''))::int  AS com_conferido,
-             COUNT(NULLIF(TRIM("processado_em"::text), ''))::int AS com_processado
-      FROM "itens"`)).rows[0]);
-
-  await rodar('amostra_datas', async () =>
-    (await pool.query(`
-      SELECT "importado_em"::text AS importado_em, "conferido_em"::text AS conferido_em,
-             "processado_em"::text AS processado_em, "status_operacional"
-      FROM "itens" ORDER BY random() LIMIT 15`)).rows);
-
-  await rodar('amostra_colunas_data', async () =>
-    (await pool.query(`
-      SELECT "importado_data"::text AS importado_data, "conferido_data"::text AS conferido_data,
-             "processado_data"::text AS processado_data
-      FROM "itens" ORDER BY random() LIMIT 15`)).rows);
-
-  for (const col of ['importado_data', 'conferido_data', 'processado_data']) {
-    await rodar('por_mes_' + col, async () =>
-      (await pool.query(`
-        SELECT SUBSTRING(${dia8(col)}, 1, 6) AS mes,
-               COUNT(*)::int AS linhas,
-               COALESCE(SUM("quantidade"), 0)::bigint AS pecas
-        FROM "itens"
-        GROUP BY 1 ORDER BY 1`)).rows);
-  }
-
-  await rodar('status_operacional', async () =>
-    (await pool.query(`
-      SELECT COALESCE(NULLIF(TRIM("status_operacional"), ''), '(vazio)') AS status, COUNT(*)::int AS linhas
-      FROM "itens" GROUP BY 1 ORDER BY 2 DESC LIMIT 30`)).rows);
-
-  res.json(out);
 });
 
 app.listen(PORT, () => {
