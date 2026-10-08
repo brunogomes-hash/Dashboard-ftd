@@ -97,7 +97,7 @@ iniciarCache();
 
 async function salvarCache(chave, resposta) {
   const hora = agoraBR();
-  memoria[chave] = { resposta, hora };
+  memoria[chave] = { resposta, hora, ts: Date.now() };
   try {
     await pool.query(
       `INSERT INTO dashboard_cache (chave, payload, atualizado_em) VALUES ($1, $2, $3)
@@ -129,30 +129,8 @@ function comoAnterior(anterior, motivo, detalhe) {
   return { ...anterior.resposta, ...extra };
 }
 
-// Proteção contra resultado "parcial" (ex.: carga em andamento): se o novo resultado for muito
-// menor que o último bom da MESMA chave, não sobrescreve o cache e serve o anterior.
-// Se continuar "pequeno" por mais de LIMITE_PARCIAL_MS, assume que é o novo normal e aceita.
-const LIMITE_PARCIAL = 0.5;
-const LIMITE_PARCIAL_MS = 3 * 60 * 1000;
-const parcialDesde = {};
-
-async function responderComCache(res, chave, resposta, estaVazio, metrica) {
+async function responderComCache(res, chave, resposta, estaVazio) {
   if (!estaVazio(resposta)) {
-    if (typeof metrica === 'function') {
-      const anterior = await lerCache(chave);
-      if (anterior && !anterior.resposta.dados_anteriores) {
-        const novo = Number(metrica(resposta)) || 0;
-        const velho = Number(metrica(anterior.resposta)) || 0;
-        if (velho > 0 && novo < velho * LIMITE_PARCIAL) {
-          const desde = parcialDesde[chave] || (parcialDesde[chave] = Date.now());
-          if (Date.now() - desde < LIMITE_PARCIAL_MS) {
-            console.warn(`[${chave}] resultado parcial (${novo} < ${velho}) -> servindo cache de ${anterior.hora}`);
-            return res.json(comoAnterior(anterior, 'resultado_parcial'));
-          }
-        }
-      }
-      delete parcialDesde[chave];
-    }
     salvarCache(chave, resposta);
     return res.json(resposta);
   }
@@ -162,6 +140,37 @@ async function responderComCache(res, chave, resposta, estaVazio, metrica) {
     return res.json(comoAnterior(anterior, 'resultado_vazio'));
   }
   return res.json(resposta);
+}
+
+// ===== MODO DIRETO (usado no Outbound) =====
+// Lê SEMPRE direto do banco. O último resultado bom só é usado quando a consulta vem VAZIA
+// ou dá ERRO, e só por poucos minutos (depois disso mostra a realidade do banco).
+const TOLERANCIA_VAZIO_MS = 5 * 60 * 1000;
+
+function cacheRecente(anterior) {
+  return anterior && anterior.ts && (Date.now() - anterior.ts) < TOLERANCIA_VAZIO_MS;
+}
+
+async function responderDireto(res, chave, resposta, estaVazio) {
+  if (!estaVazio(resposta)) {
+    salvarCache(chave, resposta);
+    return res.json(resposta);
+  }
+  const anterior = await lerCache(chave);
+  if (cacheRecente(anterior)) {
+    console.warn(`[${chave}] vazio -> segurando cache de ${anterior.hora} (até 5 min)`);
+    return res.json(comoAnterior(anterior, 'aguardando_dados'));
+  }
+  return res.json(resposta);
+}
+
+async function erroDireto(res, chave, err, titulo) {
+  console.error(`[${chave}] ${titulo}:`, err);
+  const anterior = await lerCache(chave);
+  if (cacheRecente(anterior)) {
+    return res.json(comoAnterior(anterior, 'erro_na_consulta', err.message));
+  }
+  return res.status(500).json({ error: titulo, detalhe: err.message });
 }
 
 async function erroComCache(res, chave, err, titulo) {
@@ -549,8 +558,6 @@ app.get('/api/outbound', async (req, res) => {
   const chaveOutbound = `outbound:${canalKey || 'geral'}:${req.query.data_inicio || 'mes'}:${req.query.data_fim || 'atual'}`;
 
   try {
-    if (await servirCacheSeRecarga(res, chaveOutbound, ['itens'])) return;
-
     const { data_inicio, data_fim } = req.query;
 
     let dtInicio, dtFim;
@@ -791,11 +798,10 @@ app.get('/api/outbound', async (req, res) => {
       ultima_atualizacao: await ultimaAtualizacao()
     };
 
-    await responderComCache(res, chaveOutbound, resposta,
-      d => d.pecas_integradas === 0 && d.pecas_produzidas === 0 && d.pecas_expedidas === 0,
-      d => (d.pecas_integradas || 0) + (d.pecas_produzidas || 0) + (d.pecas_expedidas || 0));
+    await responderDireto(res, chaveOutbound, resposta,
+      d => d.pecas_integradas === 0 && d.pecas_produzidas === 0 && d.pecas_expedidas === 0);
   } catch (err) {
-    await erroComCache(res, chaveOutbound, err, 'Erro no Outbound');
+    await erroDireto(res, chaveOutbound, err, 'Erro no Outbound');
   }
 });
 
