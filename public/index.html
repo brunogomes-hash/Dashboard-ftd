@@ -941,7 +941,7 @@
         if (avisarRecarga(data, p)) return;
         if (!data || data.error) return;
 
-        $('sla').innerText = data.sla_24h \vert{}\vert{} '-';$('atualizacao').innerText = data.ultima_atualizacao || '-';
+        $('sla').innerText = data.sla_24h || '-';$('atualizacao').innerText = data.ultima_atualizacao || '-';
         $('fcst-val').innerText = fmt(data.forecast_pecas);$('rec-val').innerText = fmt(data.pecas_recebidas);
         $('rec-or').innerText = fmt(data.or_recebidas);$('fluxo-val').innerText = fmt(data.pecas_fluxo);
         $('fluxo-or').innerText = fmt(data.or_fluxo);$('arm-val').innerText = fmt(data.pecas_armazenadas);
