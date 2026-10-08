@@ -97,7 +97,7 @@ iniciarCache();
 
 async function salvarCache(chave, resposta) {
   const hora = agoraBR();
-  memoria[chave] = { resposta, hora, ts: Date.now() };
+  memoria[chave] = { resposta, hora };
   try {
     await pool.query(
       `INSERT INTO dashboard_cache (chave, payload, atualizado_em) VALUES ($1, $2, $3)
@@ -142,37 +142,6 @@ async function responderComCache(res, chave, resposta, estaVazio) {
   return res.json(resposta);
 }
 
-// ===== MODO DIRETO (usado no Outbound) =====
-// Lê SEMPRE direto do banco. O último resultado bom só é usado quando a consulta vem VAZIA
-// ou dá ERRO, e só por poucos minutos (depois disso mostra a realidade do banco).
-const TOLERANCIA_VAZIO_MS = 5 * 60 * 1000;
-
-function cacheRecente(anterior) {
-  return anterior && anterior.ts && (Date.now() - anterior.ts) < TOLERANCIA_VAZIO_MS;
-}
-
-async function responderDireto(res, chave, resposta, estaVazio) {
-  if (!estaVazio(resposta)) {
-    salvarCache(chave, resposta);
-    return res.json(resposta);
-  }
-  const anterior = await lerCache(chave);
-  if (cacheRecente(anterior)) {
-    console.warn(`[${chave}] vazio -> segurando cache de ${anterior.hora} (até 5 min)`);
-    return res.json(comoAnterior(anterior, 'aguardando_dados'));
-  }
-  return res.json(resposta);
-}
-
-async function erroDireto(res, chave, err, titulo) {
-  console.error(`[${chave}] ${titulo}:`, err);
-  const anterior = await lerCache(chave);
-  if (cacheRecente(anterior)) {
-    return res.json(comoAnterior(anterior, 'erro_na_consulta', err.message));
-  }
-  return res.status(500).json({ error: titulo, detalhe: err.message });
-}
-
 async function erroComCache(res, chave, err, titulo) {
   console.error(`[${chave}] ${titulo}:`, err);
   const anterior = await lerCache(chave);
@@ -187,7 +156,7 @@ async function erroComCache(res, chave, err, titulo) {
 const contagensTabela = {};
 const encolhidaDesde = {};
 const LIMITE_ENCOLHEU = 0.5;
-const MAX_RECARGA_MS = 3 * 60 * 1000; // se ficar "pequena" por mais de 3 min, assume que é o novo normal
+const MAX_RECARGA_MS = 10 * 60 * 1000; // se ficar "pequena" por mais de 10 min, assume que é o novo normal
 
 async function tabelaEmRecarga(tabela) {
   try {
@@ -550,20 +519,6 @@ const MAPA_CANAL = {
   prefeitura:    { re: 'prefeitura',   col: 'prefeitura_total' }
 };
 
-
-// ===== LEITURA SEGURA DE DATAS (texto ISO, DD/MM/AAAA com ou sem hora, vazio, timestamp) =====
-function dtSql(col) {
-  const c = `TRIM("${col}"::text)`;
-  return `(CASE
-    WHEN NULLIF(${c}, '') IS NULL THEN NULL
-    WHEN ${c} ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}' THEN ${c}::timestamp
-    WHEN ${c} ~ '^[0-9]{2}/[0-9]{2}/[0-9]{4}'
-      THEN (to_date(substr(${c}, 1, 10), 'DD/MM/YYYY')
-            + COALESCE(NULLIF(TRIM(substr(${c}, 12, 8)), '')::time, TIME '00:00:00'))::timestamp
-    ELSE NULL
-  END)`;
-}
-
 // ROUTE 2: OUTBOUND GERAL (E CANAIS INDIVIDUAIS)
 app.get('/api/outbound', async (req, res) => {
   const canalKey = String(req.query.canal || '').toLowerCase().trim();
@@ -571,11 +526,9 @@ app.get('/api/outbound', async (req, res) => {
   const canalRe = cfgCanal ? cfgCanal.re : '';
   const chaveOutbound = `outbound:${canalKey || 'geral'}:${req.query.data_inicio || 'mes'}:${req.query.data_fim || 'atual'}`;
 
-  const tImp = dtSql('importado_em');
-  const tConf = dtSql('conferido_em');
-  const tProc = dtSql('processado_em');
-
   try {
+    if (await servirCacheSeRecarga(res, chaveOutbound, ['itens'])) return;
+
     const { data_inicio, data_fim } = req.query;
 
     let dtInicio, dtFim;
@@ -601,57 +554,67 @@ app.get('/api/outbound', async (req, res) => {
         : `AND TRIM("canal"::text) ILIKE '%${canalRe}%'`;
     }
 
-    // Integradas: depende do período filtrado
     const kpisImportados = await pool.query(`
       SELECT 
         COALESCE(SUM("quantidade"), 0) AS total_integradas,
-        COUNT(DISTINCT "pedido_de_venda") AS pedidos_integrados
+        COUNT(DISTINCT "pedido_de_venda") AS pedidos_integrados,
+
+        COALESCE(SUM(
+          CASE WHEN "status_operacional" ILIKE '%importado%'
+                 OR "status_operacional" ILIKE '%separa%'
+                 OR "status_operacional" ILIKE '%onda%'
+                 OR "status_operacional" ILIKE '%confer%'
+               THEN "quantidade" ELSE 0 END
+        ), 0) AS total_fluxo,
+
+        COUNT(DISTINCT 
+          CASE WHEN "status_operacional" ILIKE '%importado%'
+                 OR "status_operacional" ILIKE '%separa%'
+                 OR "status_operacional" ILIKE '%onda%'
+                 OR "status_operacional" ILIKE '%confer%'
+               THEN "pedido_de_venda" END
+        ) AS pedidos_fluxo,
+
+        COALESCE(SUM(
+          CASE WHEN "status_operacional" ILIKE '%aguardando exped%'
+               THEN "quantidade" ELSE 0 END
+        ), 0) AS total_coleta,
+
+        COUNT(DISTINCT 
+          CASE WHEN "status_operacional" ILIKE '%aguardando exped%'
+               THEN "pedido_de_venda" END
+        ) AS pedidos_coleta,
+
+        COALESCE(SUM(
+          CASE WHEN "status_da_nota_fiscal" ILIKE '%RETEN%'
+                 OR "status_operacional" ILIKE '%RETEN%'
+                 OR "status_operacional" ILIKE '%TRATATIVA%'
+                 OR "status_operacional" ILIKE '%corte%'
+               THEN "quantidade" ELSE 0 END
+        ), 0) AS total_tratativa,
+
+        COUNT(DISTINCT 
+          CASE WHEN "status_da_nota_fiscal" ILIKE '%RETEN%'
+                 OR "status_operacional" ILIKE '%RETEN%'
+                 OR "status_operacional" ILIKE '%TRATATIVA%'
+                 OR "status_operacional" ILIKE '%corte%'
+               THEN "pedido_de_venda" END
+        ) AS pedidos_tratativa
+
       FROM "itens"
-      WHERE ${tImp} >= $1::timestamp 
-        AND ${tImp} <= $2::timestamp
+      WHERE "importado_em"::timestamp >= $1::timestamp 
+        AND "importado_em"::timestamp <= $2::timestamp
         AND COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
         ${filtroCanal}
     `, [dtInicio, dtFim]);
-
-    // Em Fluxo / Em Coleta / Em Tratativa: FOTO ATUAL (sem filtro de data), igual ao Resumo de NF
-    const kpisStatus = await pool.query(`
-      SELECT
-        COALESCE(SUM(CASE WHEN "status_operacional" ILIKE '%importado%'
-                            OR "status_operacional" ILIKE '%separa%'
-                            OR "status_operacional" ILIKE '%onda%'
-                            OR "status_operacional" ILIKE '%confer%'
-                          THEN "quantidade" ELSE 0 END), 0) AS total_fluxo,
-        COUNT(DISTINCT CASE WHEN "status_operacional" ILIKE '%importado%'
-                            OR "status_operacional" ILIKE '%separa%'
-                            OR "status_operacional" ILIKE '%onda%'
-                            OR "status_operacional" ILIKE '%confer%'
-                          THEN "pedido_de_venda" END) AS pedidos_fluxo,
-        COALESCE(SUM(CASE WHEN "status_operacional" ILIKE '%aguardando exped%'
-                          THEN "quantidade" ELSE 0 END), 0) AS total_coleta,
-        COUNT(DISTINCT CASE WHEN "status_operacional" ILIKE '%aguardando exped%'
-                          THEN "pedido_de_venda" END) AS pedidos_coleta,
-        COALESCE(SUM(CASE WHEN "status_da_nota_fiscal" ILIKE '%RETEN%'
-                            OR "status_operacional" ILIKE '%RETEN%'
-                            OR "status_operacional" ILIKE '%TRATATIVA%'
-                            OR "status_operacional" ILIKE '%corte%'
-                          THEN "quantidade" ELSE 0 END), 0) AS total_tratativa,
-        COUNT(DISTINCT CASE WHEN "status_da_nota_fiscal" ILIKE '%RETEN%'
-                            OR "status_operacional" ILIKE '%RETEN%'
-                            OR "status_operacional" ILIKE '%TRATATIVA%'
-                            OR "status_operacional" ILIKE '%corte%'
-                          THEN "pedido_de_venda" END) AS pedidos_tratativa
-      FROM "itens"
-      WHERE COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
-        ${filtroCanal}
-    `);
 
     const kpisProduzidos = await pool.query(`
       SELECT 
         COALESCE(SUM("quantidade"), 0) AS total_produzidas,
         COUNT(DISTINCT "pedido_de_venda") AS pedidos_produzidos
       FROM "itens"
-      WHERE ${tConf} >= $1::timestamp 
-        AND ${tConf} <= $2::timestamp
+      WHERE "conferido_em"::timestamp >= $1::timestamp 
+        AND "conferido_em"::timestamp <= $2::timestamp
         AND COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
         ${filtroCanal}
     `, [dtInicio, dtFim]);
@@ -661,50 +624,50 @@ app.get('/api/outbound', async (req, res) => {
         COALESCE(SUM("quantidade"), 0) AS total_expedidas,
         COUNT(DISTINCT "pedido_de_venda") AS pedidos_expedidos
       FROM "itens"
-      WHERE ${tProc} >= $1::timestamp 
-        AND ${tProc} <= $2::timestamp
+      WHERE "processado_em"::timestamp >= $1::timestamp 
+        AND "processado_em"::timestamp <= $2::timestamp
         AND COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
         ${filtroCanal}
     `, [dtInicio, dtFim]);
 
     const graficoIntegradas = await pool.query(`
       SELECT 
-        DATE(${tImp}) AS data,
+        DATE("importado_em") AS data,
         COALESCE(SUM("quantidade"), 0) AS total_pecas
       FROM "itens"
-      WHERE ${tImp} >= $1::timestamp 
-        AND ${tImp} <= $2::timestamp
+      WHERE "importado_em"::timestamp >= $1::timestamp 
+        AND "importado_em"::timestamp <= $2::timestamp
         AND COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
         ${filtroCanal}
-      GROUP BY DATE(${tImp})
-      ORDER BY DATE(${tImp}) ASC
+      GROUP BY DATE("importado_em")
+      ORDER BY DATE("importado_em") ASC
     `, [dtInicio, dtFim]);
 
     const graficoFaturados = await pool.query(`
       SELECT 
-        DATE(${tConf}) AS data,
+        DATE("conferido_em"::timestamp) AS data,
         COALESCE(SUM("quantidade"), 0) AS total_pecas,
         COUNT(DISTINCT "nota_fiscal") AS total_notas
       FROM "itens"
-      WHERE ${tConf} >= $1::timestamp 
-        AND ${tConf} <= $2::timestamp
+      WHERE "conferido_em"::timestamp >= $1::timestamp 
+        AND "conferido_em"::timestamp <= $2::timestamp
         AND COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
         ${filtroCanal}
-      GROUP BY DATE(${tConf})
-      ORDER BY DATE(${tConf}) ASC
+      GROUP BY DATE("conferido_em"::timestamp)
+      ORDER BY DATE("conferido_em"::timestamp) ASC
     `, [dtInicio, dtFim]);
 
     const graficoExpedidas = await pool.query(`
       SELECT 
-        DATE(${tProc}) AS data,
+        DATE("processado_em"::timestamp) AS data,
         COALESCE(SUM("quantidade"), 0) AS total_pecas
       FROM "itens"
-      WHERE ${tProc} >= $1::timestamp 
-        AND ${tProc} <= $2::timestamp
+      WHERE "processado_em"::timestamp >= $1::timestamp 
+        AND "processado_em"::timestamp <= $2::timestamp
         AND COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
         ${filtroCanal}
-      GROUP BY DATE(${tProc})
-      ORDER BY DATE(${tProc}) ASC
+      GROUP BY DATE("processado_em"::timestamp)
+      ORDER BY DATE("processado_em"::timestamp) ASC
     `, [dtInicio, dtFim]);
 
     const graficoStatus = await pool.query(`
@@ -715,7 +678,7 @@ app.get('/api/outbound', async (req, res) => {
         COALESCE(SUM(CASE WHEN t.grupo = 'fluxo' THEN t.q END), 0) AS em_fluxo
       FROM (
         SELECT
-          DATE(${tImp}) AS data,
+          DATE("importado_em"::timestamp) AS data,
           "quantidade" AS q,
           CASE
             WHEN COALESCE("status_operacional", '') ILIKE '%aguardando exped%' THEN 'ag'
@@ -723,8 +686,8 @@ app.get('/api/outbound', async (req, res) => {
             ELSE 'fluxo'
           END AS grupo
         FROM "itens"
-        WHERE ${tImp} >= $1::timestamp
-          AND ${tImp} <= $2::timestamp
+        WHERE "importado_em"::timestamp >= $1::timestamp
+          AND "importado_em"::timestamp <= $2::timestamp
           AND COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
           ${filtroCanal}
       ) t
@@ -787,7 +750,6 @@ app.get('/api/outbound', async (req, res) => {
     }
 
     const imp = kpisImportados.rows[0] || {};
-    const st = kpisStatus.rows[0] || {};
     const prod = kpisProduzidos.rows[0] || {};
     const exp = kpisExpedidos.rows[0] || {};
 
@@ -796,12 +758,12 @@ app.get('/api/outbound', async (req, res) => {
       forecast_diario: forecastDiario,
       pecas_integradas: Number(imp.total_integradas || 0),
       pedidos_integradas: Number(imp.pedidos_integrados || 0),
-      pecas_fluxo: Number(st.total_fluxo || 0),
-      pedidos_fluxo: Number(st.pedidos_fluxo || 0),
-      em_coleta: Number(st.total_coleta || 0),
-      pedidos_coleta: Number(st.pedidos_coleta || 0),
-      em_tratativa: Number(st.total_tratativa || 0),
-      pedidos_tratativa: Number(st.pedidos_tratativa || 0),
+      pecas_fluxo: Number(imp.total_fluxo || 0),
+      pedidos_fluxo: Number(imp.pedidos_fluxo || 0),
+      em_coleta: Number(imp.total_coleta || 0),
+      pedidos_coleta: Number(imp.pedidos_coleta || 0),
+      em_tratativa: Number(imp.total_tratativa || 0),
+      pedidos_tratativa: Number(imp.pedidos_tratativa || 0),
       pecas_produzidas: Number(prod.total_produzidas || 0),
       pedidos_produzidas: Number(prod.pedidos_produzidos || 0),
       pecas_expedidas: Number(exp.total_expedidas || 0),
@@ -816,10 +778,10 @@ app.get('/api/outbound', async (req, res) => {
       ultima_atualizacao: await ultimaAtualizacao()
     };
 
-    await responderDireto(res, chaveOutbound, resposta,
+    await responderComCache(res, chaveOutbound, resposta,
       d => d.pecas_integradas === 0 && d.pecas_produzidas === 0 && d.pecas_expedidas === 0);
   } catch (err) {
-    await erroDireto(res, chaveOutbound, err, 'Erro no Outbound');
+    await erroComCache(res, chaveOutbound, err, 'Erro no Outbound');
   }
 });
 
@@ -1215,61 +1177,6 @@ app.get('/api/expedicao', async (req, res) => {
   } catch (err) {
     await erroComCache(res, chave, err, 'Erro Expedição');
   }
-});
-
-
-// ===== DIAGNÓSTICO DA TABELA ITENS (abra /api/diagnostico-itens no navegador) =====
-// Se existir a variável DIAG_TOKEN no Render, é obrigatório usar ?token=SEU_TOKEN
-app.get('/api/diagnostico-itens', async (req, res) => {
-  if (process.env.DIAG_TOKEN && req.query.token !== process.env.DIAG_TOKEN) {
-    return res.status(403).json({ error: 'token inválido' });
-  }
-  const out = {};
-  const rodar = async (nome, fn) => {
-    try { out[nome] = await fn(); } catch (e) { out[nome] = { erro: e.message }; }
-  };
-
-  await rodar('colunas', async () =>
-    (await pool.query(`SELECT column_name, data_type FROM information_schema.columns
-                       WHERE table_name = 'itens' ORDER BY ordinal_position`)).rows);
-
-  await rodar('total_e_preenchimento', async () =>
-    (await pool.query(`
-      SELECT COUNT(*)::int AS total,
-             COUNT(NULLIF(TRIM("importado_em"::text), ''))::int  AS com_importado,
-             COUNT(NULLIF(TRIM("conferido_em"::text), ''))::int  AS com_conferido,
-             COUNT(NULLIF(TRIM("processado_em"::text), ''))::int AS com_processado
-      FROM "itens"`)).rows[0]);
-
-  await rodar('amostra_datas', async () =>
-    (await pool.query(`
-      SELECT "importado_em"::text AS importado_em, "conferido_em"::text AS conferido_em,
-             "processado_em"::text AS processado_em, "status_operacional"
-      FROM "itens" ORDER BY random() LIMIT 15`)).rows);
-
-  for (const col of ['importado_em', 'conferido_em', 'processado_em']) {
-    await rodar('por_mes_' + col, async () =>
-      (await pool.query(`
-        SELECT TO_CHAR(${dtSql(col)}, 'YYYY-MM') AS mes,
-               COUNT(*)::int AS linhas,
-               COALESCE(SUM("quantidade"), 0)::bigint AS pecas
-        FROM "itens"
-        GROUP BY 1 ORDER BY 1`)).rows);
-  }
-
-  await rodar('datas_nao_reconhecidas', async () =>
-    (await pool.query(`
-      SELECT "importado_em"::text AS valor, COUNT(*)::int AS linhas
-      FROM "itens"
-      WHERE NULLIF(TRIM("importado_em"::text), '') IS NOT NULL AND ${dtSql('importado_em')} IS NULL
-      GROUP BY 1 ORDER BY 2 DESC LIMIT 10`)).rows);
-
-  await rodar('status_operacional', async () =>
-    (await pool.query(`
-      SELECT COALESCE(NULLIF(TRIM("status_operacional"), ''), '(vazio)') AS status, COUNT(*)::int AS linhas
-      FROM "itens" GROUP BY 1 ORDER BY 2 DESC LIMIT 30`)).rows);
-
-  res.json(out);
 });
 
 app.listen(PORT, () => {
