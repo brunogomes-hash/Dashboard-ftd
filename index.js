@@ -258,8 +258,6 @@ async function detectarColunasEstoque() {
   return infoEstoque;
 }
 
-// Colunas de entrada_consolidada_porcentagem: detectadas pelo sentido, então
-// continuam funcionando se o cabeçalho da planilha mudar de nome.
 let infoPorcEntrada = null;
 let infoPorcEntradaEm = 0;
 
@@ -886,17 +884,17 @@ app.get('/api/notas-fluxo', async (req, res) => {
       ORDER BY pecas DESC
     `);
 
-    // ===== QUERY ADICIONADA: AGRUPAMENTO POR TIPO (RECEBIMENTO X DEVOLUÇÃO) =====
+    // ===== QUERY CORRIGIDA PARA RESUMO POR STATUS NA ENTRADA CONSOLIDADA =====
     const porTipo = await pool.query(`
       SELECT
         COALESCE(NULLIF(TRIM("status_processo"), ''), COALESCE(NULLIF(TRIM("status"), ''), 'SEM STATUS')) AS status,
-        COALESCE(SUM(CASE WHEN TRIM("regra") ~* '^compra' THEN COALESCE("qtde_de_peças", 0) ELSE 0 END), 0) AS recebimento_pecas,
-        COALESCE(SUM(CASE WHEN TRIM("regra") ~* '^devol' THEN COALESCE("qtde_de_peças", 0) ELSE 0 END), 0) AS devolucao_pecas
+        COUNT(DISTINCT "or") AS notas,
+        COALESCE(SUM("qtde_de_peças"), 0) AS pecas
       FROM "entrada_consolidada"
       WHERE COALESCE("status_processo", '') NOT ILIKE '%cancel%'
         AND COALESCE("status", '') NOT ILIKE '%cancel%'
       GROUP BY 1
-      ORDER BY (recebimento_pecas + devolucao_pecas) DESC
+      ORDER BY pecas DESC
     `);
 
     const totais = await pool.query(`
