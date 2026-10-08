@@ -533,12 +533,27 @@ function dtSql(col) {
   END)`;
 }
 
+
+// ===== COLUNAS DE DATA NO FORMATO AAAAMMDD (ex.: "20260901" ou "20260901.0") =====
+// Pega só os 8 primeiros dígitos como TEXTO e compara como texto: não existe cast de data,
+// então uma linha estranha (vazia, "nan", etc.) nunca derruba a consulta inteira.
+function dia8(col) {
+  return `SUBSTRING(TRIM("${col}"::text) FROM '^([0-9]{8})')`;
+}
+function dia8ISO(expr) {
+  return `(SUBSTRING(${expr},1,4) || '-' || SUBSTRING(${expr},5,2) || '-' || SUBSTRING(${expr},7,2))`;
+}
+
 // ROUTE 2: OUTBOUND GERAL (E CANAIS INDIVIDUAIS)
 app.get('/api/outbound', async (req, res) => {
   const canalKey = String(req.query.canal || '').toLowerCase().trim();
   const cfgCanal = MAPA_CANAL[canalKey] || null;
   const canalRe = cfgCanal ? cfgCanal.re : '';
   const chaveOutbound = `outbound:${canalKey || 'geral'}:${req.query.data_inicio || 'mes'}:${req.query.data_fim || 'atual'}`;
+
+  const dImp = dia8('importado_data');
+  const dConf = dia8('conferido_data');
+  const dProc = dia8('processado_data');
 
   try {
     if (await servirCacheSeRecarga(res, chaveOutbound, ['itens'])) return;
@@ -558,6 +573,9 @@ app.get('/api/outbound', async (req, res) => {
       dtFim = `${ano}-${mes}-${String(ultimoDia).padStart(2, '0')} 23:59:59`;
     }
 
+    const dIni8 = dtInicio.slice(0, 10).replace(/-/g, '');
+    const dFim8 = dtFim.slice(0, 10).replace(/-/g, '');
+
     // A tabela "itens" pode não ter a coluna "modalidade": só filtra por ela se existir (senão dá erro e cai no cache antigo)
     let filtroCanal = '';
     if (canalRe) {
@@ -574,11 +592,11 @@ app.get('/api/outbound', async (req, res) => {
         COALESCE(SUM("quantidade"), 0) AS total_integradas,
         COUNT(DISTINCT "pedido_de_venda") AS pedidos_integrados
       FROM "itens"
-      WHERE "importado_em"::timestamp >= $1::timestamp 
-        AND "importado_em"::timestamp <= $2::timestamp
+      WHERE ${dImp} >= $1::text 
+        AND ${dImp} <= $2::text
         AND COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
         ${filtroCanal}
-    `, [dtInicio, dtFim]);
+    `, [dIni8, dFim8]);
 
     // Em Fluxo / Em Coleta / Em Tratativa: FOTO ATUAL (sem filtro de data), igual ao Resumo de NF
     const kpisStatus = await pool.query(`
@@ -617,62 +635,62 @@ app.get('/api/outbound', async (req, res) => {
         COALESCE(SUM("quantidade"), 0) AS total_produzidas,
         COUNT(DISTINCT "pedido_de_venda") AS pedidos_produzidos
       FROM "itens"
-      WHERE "conferido_em"::timestamp >= $1::timestamp 
-        AND "conferido_em"::timestamp <= $2::timestamp
+      WHERE ${dConf} >= $1::text 
+        AND ${dConf} <= $2::text
         AND COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
         ${filtroCanal}
-    `, [dtInicio, dtFim]);
+    `, [dIni8, dFim8]);
 
     const kpisExpedidos = await pool.query(`
       SELECT 
         COALESCE(SUM("quantidade"), 0) AS total_expedidas,
         COUNT(DISTINCT "pedido_de_venda") AS pedidos_expedidos
       FROM "itens"
-      WHERE "processado_em"::timestamp >= $1::timestamp 
-        AND "processado_em"::timestamp <= $2::timestamp
+      WHERE ${dProc} >= $1::text 
+        AND ${dProc} <= $2::text
         AND COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
         ${filtroCanal}
-    `, [dtInicio, dtFim]);
+    `, [dIni8, dFim8]);
 
     const graficoIntegradas = await pool.query(`
       SELECT 
-        DATE("importado_em"::timestamp) AS data,
+        ${dia8ISO(dImp)} AS data,
         COALESCE(SUM("quantidade"), 0) AS total_pecas
       FROM "itens"
-      WHERE "importado_em"::timestamp >= $1::timestamp 
-        AND "importado_em"::timestamp <= $2::timestamp
+      WHERE ${dImp} >= $1::text 
+        AND ${dImp} <= $2::text
         AND COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
         ${filtroCanal}
-      GROUP BY DATE("importado_em"::timestamp)
-      ORDER BY DATE("importado_em"::timestamp) ASC
-    `, [dtInicio, dtFim]);
+      GROUP BY 1
+      ORDER BY 1 ASC
+    `, [dIni8, dFim8]);
 
     const graficoFaturados = await pool.query(`
       SELECT 
-        DATE("conferido_em"::timestamp) AS data,
+        ${dia8ISO(dConf)} AS data,
         COALESCE(SUM("quantidade"), 0) AS total_pecas,
         COUNT(DISTINCT "nota_fiscal") AS total_notas
       FROM "itens"
-      WHERE "conferido_em"::timestamp >= $1::timestamp 
-        AND "conferido_em"::timestamp <= $2::timestamp
+      WHERE ${dConf} >= $1::text 
+        AND ${dConf} <= $2::text
         AND COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
         ${filtroCanal}
-      GROUP BY DATE("conferido_em"::timestamp)
-      ORDER BY DATE("conferido_em"::timestamp) ASC
-    `, [dtInicio, dtFim]);
+      GROUP BY 1
+      ORDER BY 1 ASC
+    `, [dIni8, dFim8]);
 
     const graficoExpedidas = await pool.query(`
       SELECT 
-        DATE("processado_em"::timestamp) AS data,
+        ${dia8ISO(dProc)} AS data,
         COALESCE(SUM("quantidade"), 0) AS total_pecas
       FROM "itens"
-      WHERE "processado_em"::timestamp >= $1::timestamp 
-        AND "processado_em"::timestamp <= $2::timestamp
+      WHERE ${dProc} >= $1::text 
+        AND ${dProc} <= $2::text
         AND COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
         ${filtroCanal}
-      GROUP BY DATE("processado_em"::timestamp)
-      ORDER BY DATE("processado_em"::timestamp) ASC
-    `, [dtInicio, dtFim]);
+      GROUP BY 1
+      ORDER BY 1 ASC
+    `, [dIni8, dFim8]);
 
     const graficoStatus = await pool.query(`
       SELECT
@@ -682,7 +700,7 @@ app.get('/api/outbound', async (req, res) => {
         COALESCE(SUM(CASE WHEN t.grupo = 'fluxo' THEN t.q END), 0) AS em_fluxo
       FROM (
         SELECT
-          DATE("importado_em"::timestamp) AS data,
+          ${dia8ISO(dImp)} AS data,
           "quantidade" AS q,
           CASE
             WHEN COALESCE("status_operacional", '') ILIKE '%aguardando exped%' THEN 'ag'
@@ -690,14 +708,14 @@ app.get('/api/outbound', async (req, res) => {
             ELSE 'fluxo'
           END AS grupo
         FROM "itens"
-        WHERE "importado_em"::timestamp >= $1::timestamp
-          AND "importado_em"::timestamp <= $2::timestamp
+        WHERE ${dImp} >= $1::text
+          AND ${dImp} <= $2::text
           AND COALESCE("status_operacional", '') NOT ILIKE '%cancelad%'
           ${filtroCanal}
       ) t
       GROUP BY t.data
       ORDER BY t.data DESC
-    `, [dtInicio, dtFim]);
+    `, [dIni8, dFim8]);
 
     const mesRef = dtInicio.slice(0, 4) + dtInicio.slice(5, 7);
     let forecastPecas = 0;
@@ -1214,22 +1232,21 @@ app.get('/api/diagnostico-itens', async (req, res) => {
              "processado_em"::text AS processado_em, "status_operacional"
       FROM "itens" ORDER BY random() LIMIT 15`)).rows);
 
-  for (const col of ['importado_em', 'conferido_em', 'processado_em']) {
+  await rodar('amostra_colunas_data', async () =>
+    (await pool.query(`
+      SELECT "importado_data"::text AS importado_data, "conferido_data"::text AS conferido_data,
+             "processado_data"::text AS processado_data
+      FROM "itens" ORDER BY random() LIMIT 15`)).rows);
+
+  for (const col of ['importado_data', 'conferido_data', 'processado_data']) {
     await rodar('por_mes_' + col, async () =>
       (await pool.query(`
-        SELECT TO_CHAR(${dtSql(col)}, 'YYYY-MM') AS mes,
+        SELECT SUBSTRING(${dia8(col)}, 1, 6) AS mes,
                COUNT(*)::int AS linhas,
                COALESCE(SUM("quantidade"), 0)::bigint AS pecas
         FROM "itens"
         GROUP BY 1 ORDER BY 1`)).rows);
   }
-
-  await rodar('datas_nao_reconhecidas', async () =>
-    (await pool.query(`
-      SELECT "importado_em"::text AS valor, COUNT(*)::int AS linhas
-      FROM "itens"
-      WHERE NULLIF(TRIM("importado_em"::text), '') IS NOT NULL AND ${dtSql('importado_em')} IS NULL
-      GROUP BY 1 ORDER BY 2 DESC LIMIT 10`)).rows);
 
   await rodar('status_operacional', async () =>
     (await pool.query(`
