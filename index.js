@@ -345,8 +345,8 @@ app.get('/api/dashboard', async (req, res) => {
 
         // Só o quadro "Peças por Depósitos - Virtuais" também conta as avarias (Normal + Avaria).
         const filtroEstadoComAvaria = info.colEstado
-          ? `WHERE UPPER(TRIM(${aspas(info.colEstado)}::text)) = ''
-                OR UPPER(TRIM(${aspas(info.colEstado)}::text)) LIKE ''`
+          ? `WHERE UPPER(TRIM(${aspas(info.colEstado)}::text)) = 'NORMAL'
+                OR UPPER(TRIM(${aspas(info.colEstado)}::text)) LIKE 'VENCIDO/TRUNCADO'`
           : '';
         const baseDepositos = montarBase(filtroEstadoComAvaria);
 
