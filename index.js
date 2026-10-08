@@ -663,7 +663,6 @@ app.get('/api/outbound', async (req, res) => {
       ORDER BY 1 ASC
     `, [dIni8, dFim8]);
 
-    // ===== AJUSTE PRINCIPAL: Separação de Em Tratativa no Gráfico Lateral =====
     const graficoStatus = await pool.query(`
       SELECT
         t.data,
@@ -788,7 +787,7 @@ app.get('/api/outbound', async (req, res) => {
 // ROUTE 3: RESUMO DE NF
 app.get('/api/notas-fluxo', async (req, res) => {
   try {
-    if (await servirCacheSeRecarga(res, 'resumo-nf', ['itens'])) return;
+    if (await servirCacheSeRecarga(res, 'resumo-nf', ['itens', 'entrada_consolidada'])) return;
 
     const infoNF = await detectarColunasItens();
     const colDestNF = infoNF.colunas.find(c => normNome(c) === 'destinatario');
@@ -802,6 +801,7 @@ app.get('/api/notas-fluxo', async (req, res) => {
           ${chaveNF} AS nota_fiscal,
           COALESCE(NULLIF(TRIM("status_operacional"), ''), 'SEM STATUS') AS status,
           COALESCE(NULLIF(TRIM("canal"), ''), 'SEM CANAL') AS canal,
+          'Outbound' AS tipo,
           MAX(${exprDest}) AS destinatario,
           MAX(CASE WHEN TRIM("qtde_de_produto"::text) ~ '^[0-9]+([.,][0-9]+)?$'
                    THEN REPLACE(TRIM("qtde_de_produto"::text), ',', '.')::numeric END) AS skus,
@@ -827,7 +827,7 @@ app.get('/api/notas-fluxo', async (req, res) => {
 
     const notas = await pool.query(`
       ${base}
-      SELECT nota_fiscal, status, canal, destinatario, skus, pedidos, pecas
+      SELECT nota_fiscal, tipo, status, canal, destinatario, skus, pedidos, pecas
       FROM base
       ORDER BY (CASE WHEN status ILIKE '%corte%' OR status ILIKE '%reten%' OR status ILIKE '%tratativa%' THEN 0 ELSE 1 END),
                pecas DESC
@@ -858,6 +858,19 @@ app.get('/api/notas-fluxo', async (req, res) => {
       ORDER BY pecas DESC
     `);
 
+    // ===== QUERY ADICIONADA: AGRUPAMENTO POR TIPO (RECEBIMENTO X DEVOLUÇÃO) =====
+    const porTipo = await pool.query(`
+      SELECT
+        COALESCE(NULLIF(TRIM("status_processo"), ''), COALESCE(NULLIF(TRIM("status"), ''), 'SEM STATUS')) AS status,
+        COALESCE(SUM(CASE WHEN TRIM("regra") ~* '^compra' THEN COALESCE("qtde_de_peças", 0) ELSE 0 END), 0) AS recebimento_pecas,
+        COALESCE(SUM(CASE WHEN TRIM("regra") ~* '^devol' THEN COALESCE("qtde_de_peças", 0) ELSE 0 END), 0) AS devolucao_pecas
+      FROM "entrada_consolidada"
+      WHERE COALESCE("status_processo", '') NOT ILIKE '%cancel%'
+        AND COALESCE("status", '') NOT ILIKE '%cancel%'
+      GROUP BY 1
+      ORDER BY (recebimento_pecas + devolucao_pecas) DESC
+    `);
+
     const totais = await pool.query(`
       ${base}
       SELECT
@@ -882,6 +895,7 @@ app.get('/api/notas-fluxo', async (req, res) => {
       em_tratativa_pecas: Number(trat.rows[0]?.pecas || 0),
       por_status: porStatus.rows || [],
       por_canal: porCanal.rows || [],
+      por_tipo: porTipo.rows || [], // Enviado para a nova tabela do site
       notas: notas.rows || [],
       ultima_atualizacao: await ultimaAtualizacao()
     };
