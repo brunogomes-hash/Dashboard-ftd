@@ -49,11 +49,14 @@ async function ultimaAtualizacao() {
   if (atualizacaoCache.valor && Date.now() - atualizacaoCache.em < 30000) return atualizacaoCache.valor;
   atualizacaoCache.em = Date.now();
   try {
+    // Busca os registros mais recentes ordenando pela coluna de cadastro
     const r = await pool.query(`
       SELECT DISTINCT TRIM("última_atualização") AS v
       FROM "entrada_consolidada"
       WHERE "última_atualização" IS NOT NULL AND TRIM("última_atualização") <> ''
-      LIMIT 500`);
+      ORDER BY 1 DESC
+      LIMIT 100`);
+    
     let melhor = null, melhorT = -1;
     r.rows.forEach(({ v }) => {
       const p = lerAtualizacao(v);
@@ -62,16 +65,18 @@ async function ultimaAtualizacao() {
         if (t > melhorT) { melhorT = t; melhor = p; }
       }
     });
+    
     const dois = n => String(n).padStart(2, '0');
     if (melhor) {
       atualizacaoCache.valor = `${dois(melhor.d)}/${dois(melhor.mo)}/${melhor.y}, ${dois(melhor.h)}:${dois(melhor.mi)}:${dois(melhor.s)}`;
-    } else if (r.rows[0]) {
-      atualizacaoCache.valor = r.rows[0].v;
+    } else {
+      atualizacaoCache.valor = agoraBR();
     }
   } catch (e) {
     console.error('Aviso: não foi possível ler a última atualização:', e.message);
+    atualizacaoCache.valor = agoraBR();
   }
-  return atualizacaoCache.valor || agoraBR();
+  return atualizacaoCache.valor;
 }
 
 // ===== CACHE DO ÚLTIMO RESULTADO BOM =====
