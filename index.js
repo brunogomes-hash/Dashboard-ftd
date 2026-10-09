@@ -49,19 +49,19 @@ async function ultimaAtualizacao() {
   if (atualizacaoCache.valor && Date.now() - atualizacaoCache.em < 30000) return atualizacaoCache.valor;
   atualizacaoCache.em = Date.now();
   try {
-    // Busca os registros mais recentes ordenando pela coluna de cadastro
     const r = await pool.query(`
       SELECT DISTINCT TRIM("última_atualização") AS v
       FROM "entrada_consolidada"
-      WHERE "última_atualização" IS NOT NULL AND TRIM("última_atualização") <> ''
-      ORDER BY 1 DESC
-      LIMIT 100`);
+      WHERE "última_atualização" IS NOT NULL 
+        AND TRIM("última_atualização") <> ''
+      LIMIT 1000`);
     
     let melhor = null, melhorT = -1;
     r.rows.forEach(({ v }) => {
       const p = lerAtualizacao(v);
       if (p) {
         const t = Date.UTC(p.y, p.mo - 1, p.d, p.h, p.mi, p.s);
+        // Garante que pega a maior data real/recente
         if (t > melhorT) { melhorT = t; melhor = p; }
       }
     });
